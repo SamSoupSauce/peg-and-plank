@@ -18,6 +18,7 @@ export interface PlankDef {
   w: number
   h: number
   angle?: number // initial angle in degrees
+  breakable?: boolean // shatters after the ball crosses it
 }
 
 export interface CupDef {
@@ -27,15 +28,24 @@ export interface CupDef {
   h: number // depth
 }
 
+export interface OneWayPeg {
+  slot: number
+  direction: 'up' | 'down' | 'left' | 'right'
+}
+
 export interface LevelDef {
   name: string
   hint: string
   grid: GridDef
-  pegs: number[] // slot indices that start occupied by pegs
+  pegs: number[] // slot indices that start occupied by normal movable pegs
+  fixedPegs?: number[] // slot indices for immovable pegs
+  oneWayPegs?: OneWayPeg[] // directional barrier pegs
   planks: PlankDef[]
   ball: Vec // ball spawn point
   cup: CupDef
   hintSlots?: number[] // slots that pulse as a hint
+  par?: number // target moves (peg moves + plank drops) for 3 stars
+  maxDrops?: number // max number of plank drops allowed
 }
 
 export function slotPos(grid: GridDef, index: number): Vec {

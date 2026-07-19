@@ -29,7 +29,7 @@ export interface UsePacksResult {
   addPackFromFile: (file: File, name?: string) => Promise<void>
   addPackFromJSON: (text: string, name?: string) => void
   removePack: (id: string) => boolean
-  winLevel: (levelIndex: number) => void
+  winLevel: (levelIndex: number, stars?: number) => void
   loseBall: () => void
   loading: boolean
 }
@@ -50,7 +50,7 @@ function initPackState() {
   return {
     packs: loadedPacks,
     currentPackId: pack?.id ?? null,
-    progress: pack ? loadProgress(pack.id, pack.levels.length) : { unlocked: 0, completed: [], losses: 0 },
+    progress: pack ? loadProgress(pack.id, pack.levels.length) : { unlocked: 0, completed: [], stars: [], losses: 0 },
   }
 }
 
@@ -175,9 +175,9 @@ export function usePacks(): UsePacksResult {
   )
 
   const winLevel = useCallback(
-    (levelIndex: number) => {
+    (levelIndex: number, stars?: number) => {
       if (!currentPack) return
-      const next = recordWin(currentPack.id, levelIndex, currentPack.levels.length)
+      const next = recordWin(currentPack.id, levelIndex, currentPack.levels.length, stars)
       setProgress(next)
     },
     [currentPack],

@@ -1,5 +1,5 @@
 import Matter from 'matter-js'
-import type { LevelDef, Vec } from './types'
+import type { LevelDef, OneWayPeg, Vec } from './types'
 import { slotPos } from './types'
 
 export const W = 960
@@ -13,6 +13,7 @@ const CUP_WALL_T = 16
 
 export interface Stats {
   moves: number
+  drops: number
   emptySlots: number
   ballLive: boolean
   planksLive: boolean
@@ -57,12 +58,16 @@ export class Game {
   private level!: LevelDef
   private slots: Vec[] = []
   private pegs = new Map<number, Matter.Body>()
+  private fixedPegs = new Map<number, Matter.Body>()
+  private oneWayPegs = new Map<number, { body: Matter.Body; direction: OneWayPeg['direction'] }>()
   private planks: (Matter.Body | null)[] = []
+  private plankBreakable: boolean[] = []
   private ball: Matter.Body | null = null
   private statics: Matter.Body[] = []
   private goalSensor: Matter.Body | null = null
 
   private moves = 0
+  private drops = 0
   private won = false
 
   private pointer: Vec = { x: -999, y: -999 }
@@ -79,13 +84,21 @@ export class Game {
     this.engine.gravity.y = 1
 
     Matter.Events.on(this.engine, 'collisionStart', (e) => {
-      if (this.won || !this.ball || !this.goalSensor) return
+      if (!this.ball) return
       for (const pair of e.pairs) {
         const labels = [pair.bodyA.label, pair.bodyB.label]
-        if (labels.includes('goal') && labels.includes('ball')) {
+        if (labels.includes('goal') && labels.includes('ball') && !this.won) {
           this.handleWin()
           break
         }
+        this.handleBallPlankContact(pair.bodyA, pair.bodyB, true)
+      }
+    })
+
+    Matter.Events.on(this.engine, 'collisionEnd', (e) => {
+      if (!this.ball) return
+      for (const pair of e.pairs) {
+        this.handleBallPlankContact(pair.bodyA, pair.bodyB, false)
       }
     })
 
@@ -121,12 +134,16 @@ export class Game {
       slotPos(level.grid, i),
     )
     this.pegs.clear()
+    this.fixedPegs.clear()
+    this.oneWayPegs.clear()
     this.planks = []
+    this.plankBreakable = []
     this.ball = null
     this.statics = []
     this.goalSensor = null
     this.held = null
     this.moves = 0
+    this.drops = 0
     this.won = false
     this.particles = []
     this.invalidFlash = 0
@@ -165,13 +182,30 @@ export class Game {
     })
     this.statics.push(this.goalSensor)
 
-    // starting pegs
+    // normal movable pegs
     for (const idx of level.pegs) {
       const p = this.slots[idx]
       this.pegs.set(idx, this.makePeg(p.x, p.y))
     }
 
-    Matter.World.add(world, [...this.statics, ...this.pegs.values()])
+    // fixed immovable pegs
+    for (const idx of level.fixedPegs ?? []) {
+      const p = this.slots[idx]
+      this.fixedPegs.set(idx, this.makeFixedPeg(p.x, p.y))
+    }
+
+    // one-way directional pegs
+    for (const { slot, direction } of level.oneWayPegs ?? []) {
+      const p = this.slots[slot]
+      this.oneWayPegs.set(slot, { body: this.makeOneWayPegWall(p.x, p.y, direction), direction })
+    }
+
+    Matter.World.add(world, [
+      ...this.statics,
+      ...this.pegs.values(),
+      ...this.fixedPegs.values(),
+      ...[...this.oneWayPegs.values()].map((o) => o.body),
+    ])
     this.emitStats()
   }
 
@@ -184,9 +218,59 @@ export class Game {
     })
   }
 
+  private makeFixedPeg(x: number, y: number): Matter.Body {
+    return Matter.Bodies.circle(x, y, PEG_R, {
+      isStatic: true,
+      label: 'peg-fixed',
+      friction: 0.8,
+      restitution: 0.05,
+    })
+  }
+
+  /**
+   * One-way pegs are visual circles plus a small static wall on the side
+   * where traffic in the forbidden direction would arrive. The wall blocks
+   * the ball from moving opposite to the arrow; the open side lets the ball
+   * pass through the peg's visual area.
+   */
+  private makeOneWayPegWall(x: number, y: number, direction: OneWayPeg['direction']): Matter.Body {
+    let wx = x
+    let wy = y
+    let w = 6
+    let h = PEG_R * 2
+    switch (direction) {
+      case 'right':
+        wx = x + PEG_R
+        break
+      case 'left':
+        wx = x - PEG_R
+        break
+      case 'up':
+        wy = y - PEG_R
+        w = PEG_R * 2
+        h = 6
+        break
+      case 'down':
+        wy = y + PEG_R
+        w = PEG_R * 2
+        h = 6
+        break
+    }
+    return Matter.Bodies.rectangle(wx, wy, w, h, {
+      isStatic: true,
+      label: 'peg-oneway',
+      friction: 0.1,
+      restitution: 0.1,
+    })
+  }
+
   // ------------------------------------------------------------ public API
 
   dropPlanks() {
+    if (this.won) return
+    const max = this.level.maxDrops
+    if (max !== undefined && this.drops >= max) return
+
     const world = this.engine.world
     for (const p of this.planks) if (p) Matter.World.remove(world, p)
     this.planks = this.level.planks.map((d) =>
@@ -201,7 +285,9 @@ export class Game {
         angle: ((d.angle ?? 0) * Math.PI) / 180,
       }),
     )
+    this.plankBreakable = this.level.planks.map((d) => d.breakable ?? false)
     Matter.World.add(world, this.planks as Matter.Body[])
+    this.drops++
     this.emitStats()
   }
 
@@ -395,9 +481,53 @@ export class Game {
     this.emitStats()
   }
 
+  private handleBallPlankContact(a: Matter.Body, b: Matter.Body, start: boolean) {
+    if (!this.ball) return
+    const ball = this.ball
+    let plankIdx = -1
+    if (a === ball && b.label === 'plank') plankIdx = this.planks.indexOf(b)
+    else if (b === ball && a.label === 'plank') plankIdx = this.planks.indexOf(a)
+    if (plankIdx < 0) return
+
+    if (start) {
+      ;(this.planks[plankIdx] as Matter.Body).plugin ??= {}
+      ;(this.planks[plankIdx] as Matter.Body).plugin!.ballTouched = true
+      return
+    }
+
+    const plank = this.planks[plankIdx]
+    if (!plank) return
+    if (this.plankBreakable[plankIdx] && plank.plugin?.ballTouched) {
+      this.breakPlank(plankIdx)
+    }
+  }
+
+  private breakPlank(index: number) {
+    const plank = this.planks[index]
+    if (!plank) return
+    const { x, y } = plank.position
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2
+      const sp = 1 + Math.random() * 3
+      this.particles.push({
+        x,
+        y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 2,
+        life: 1,
+        color: '#b87c3c',
+        size: 2 + Math.random() * 3,
+      })
+    }
+    Matter.World.remove(this.engine.world, plank)
+    this.planks[index] = null
+    this.emitStats()
+  }
+
   private emitStats() {
     this.events.onStats({
       moves: this.moves,
+      drops: this.drops,
       emptySlots: this.emptySlotCount,
       ballLive: this.ball !== null,
       planksLive: this.planks.length > 0,
@@ -534,7 +664,7 @@ export class Game {
     const target = this.held ? this.nearestSlot(this.pointer) : -1
     for (let i = 0; i < this.slots.length; i++) {
       const s = this.slots[i]
-      const occupied = this.pegs.has(i)
+      const occupied = this.pegs.has(i) || this.fixedPegs.has(i) || this.oneWayPegs.has(i)
       // hole
       ctx.beginPath()
       ctx.arc(s.x, s.y, SLOT_R, 0, Math.PI * 2)
@@ -579,10 +709,22 @@ export class Game {
     }
 
     // ---- planks
-    for (const p of this.planks) if (p) this.renderPlank(ctx, p)
+    for (let i = 0; i < this.planks.length; i++) {
+      const p = this.planks[i]
+      if (p) this.renderPlank(ctx, p, this.plankBreakable[i])
+    }
 
     // ---- pegs
     for (const body of this.pegs.values()) this.renderPeg(ctx, body.position.x, body.position.y, 1)
+
+    // ---- fixed pegs
+    for (const body of this.fixedPegs.values()) this.renderFixedPeg(ctx, body.position.x, body.position.y)
+
+    // ---- one-way peg visuals
+    for (const [slot, { direction }] of this.oneWayPegs) {
+      const s = this.slots[slot]
+      this.renderOneWayPeg(ctx, s.x, s.y, direction)
+    }
 
     // ---- held peg ghost (floats at pointer, or at home slot in click-carry mode)
     if (this.held) {
@@ -696,7 +838,7 @@ export class Game {
     ctx.restore()
   }
 
-  private renderPlank(ctx: CanvasRenderingContext2D, body: Matter.Body) {
+  private renderPlank(ctx: CanvasRenderingContext2D, body: Matter.Body, breakable: boolean) {
     const v = body.vertices
     ctx.save()
     ctx.shadowColor = 'rgba(0,0,0,0.4)'
@@ -712,8 +854,13 @@ export class Game {
       body.position.x,
       body.position.y + 12,
     )
-    grad.addColorStop(0, '#d9a05e')
-    grad.addColorStop(1, '#b87c3c')
+    if (breakable) {
+      grad.addColorStop(0, '#d9a05e')
+      grad.addColorStop(1, '#8b5a2b')
+    } else {
+      grad.addColorStop(0, '#d9a05e')
+      grad.addColorStop(1, '#b87c3c')
+    }
     ctx.fillStyle = grad
     ctx.fill()
     ctx.restore()
@@ -721,9 +868,29 @@ export class Game {
     ctx.moveTo(v[0].x, v[0].y)
     for (let i = 1; i < v.length; i++) ctx.lineTo(v[i].x, v[i].y)
     ctx.closePath()
-    ctx.strokeStyle = '#7a4f22'
+    ctx.strokeStyle = breakable ? '#5c3a1e' : '#7a4f22'
     ctx.lineWidth = 2
     ctx.stroke()
+
+    if (breakable) {
+      // crack lines
+      ctx.strokeStyle = 'rgba(60,30,10,0.5)'
+      ctx.lineWidth = 1.5
+      const cx = body.position.x
+      const cy = body.position.y
+      const hw = (body.bounds.max.x - body.bounds.min.x) / 2 - 8
+      const hh = (body.bounds.max.y - body.bounds.min.y) / 2 - 4
+      ctx.beginPath()
+      ctx.moveTo(cx - hw * 0.3, cy - hh * 0.4)
+      ctx.lineTo(cx + hw * 0.1, cy + hh * 0.2)
+      ctx.lineTo(cx + hw * 0.4, cy - hh * 0.1)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(cx - hw * 0.1, cy + hh * 0.3)
+      ctx.lineTo(cx + hw * 0.3, cy + hh * 0.5)
+      ctx.stroke()
+    }
+
     // grain lines along the plank
     const angle = body.angle
     const c = Math.cos(angle)
@@ -772,6 +939,70 @@ export class Game {
       ctx.lineWidth = 2.5
       ctx.stroke()
     }
+    ctx.restore()
+  }
+
+  private renderFixedPeg(ctx: CanvasRenderingContext2D, x: number, y: number) {
+    ctx.save()
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'
+    ctx.shadowBlur = 6
+    ctx.shadowOffsetY = 3
+    const grad = ctx.createRadialGradient(x - 3, y - 4, 2, x, y, PEG_R)
+    grad.addColorStop(0, '#fca5a5')
+    grad.addColorStop(0.5, '#b91c1c')
+    grad.addColorStop(1, '#7f1d1d')
+    ctx.beginPath()
+    ctx.arc(x, y, PEG_R, 0, Math.PI * 2)
+    ctx.fillStyle = grad
+    ctx.fill()
+    ctx.restore()
+
+    // rivet ring
+    ctx.beginPath()
+    ctx.arc(x, y, PEG_R, 0, Math.PI * 2)
+    ctx.strokeStyle = '#450a0a'
+    ctx.lineWidth = 2
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(x, y, PEG_R - 4, 0, Math.PI * 2)
+    ctx.strokeStyle = 'rgba(69,10,10,0.5)'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+  }
+
+  private renderOneWayPeg(ctx: CanvasRenderingContext2D, x: number, y: number, direction: OneWayPeg['direction']) {
+    // base circle
+    ctx.save()
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'
+    ctx.shadowBlur = 6
+    ctx.shadowOffsetY = 3
+    const grad = ctx.createRadialGradient(x - 3, y - 4, 2, x, y, PEG_R)
+    grad.addColorStop(0, '#bfdbfe')
+    grad.addColorStop(0.5, '#3b82f6')
+    grad.addColorStop(1, '#1e40af')
+    ctx.beginPath()
+    ctx.arc(x, y, PEG_R, 0, Math.PI * 2)
+    ctx.fillStyle = grad
+    ctx.fill()
+    ctx.restore()
+    ctx.beginPath()
+    ctx.arc(x, y, PEG_R, 0, Math.PI * 2)
+    ctx.strokeStyle = '#1e3a8a'
+    ctx.lineWidth = 2
+    ctx.stroke()
+
+    // arrow
+    ctx.save()
+    ctx.translate(x, y)
+    const rot = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 }[direction]
+    ctx.rotate(rot)
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'
+    ctx.beginPath()
+    ctx.moveTo(6, 0)
+    ctx.lineTo(-3, -4)
+    ctx.lineTo(-3, 4)
+    ctx.closePath()
+    ctx.fill()
     ctx.restore()
   }
 

@@ -1,4 +1,4 @@
-import type { LevelDef } from './types'
+import type { LevelDef, OneWayPeg } from './types'
 
 export type { LevelDef }
 
@@ -163,6 +163,62 @@ export const LEVELS: LevelDef[] = [
     ball: { x: 160, y: 15 },
     cup: { x: 420, y: 540, w: 140, h: 60 },
   },
+  // ---------- entity mechanic showcase levels ----------
+  {
+    name: 'Fixed Point',
+    hint: 'The rusty red peg is bolted down. Use it as the anchor and place the spare peg under the far end of the ramp.',
+    grid: GRID,
+    pegs: [45],
+    fixedPegs: [10],
+    planks: [{ x: 165, y: 130, w: 120, h: 16, angle: 41.6 }],
+    ball: { x: 120, y: 20 },
+    cup: { x: 420, y: 540, w: 140, h: 60 },
+    hintSlots: [20],
+  },
+  {
+    name: 'One-Way Gate',
+    hint: 'The blue arrow peg only lets the ball pass from left to right. Build a ramp that sends the ball through it.',
+    grid: GRID,
+    pegs: [45, 30],
+    oneWayPegs: [{ slot: 20, direction: 'right' }],
+    planks: [{ x: 300, y: 200, w: 220, h: 16, angle: 22 }],
+    ball: { x: 120, y: 20 },
+    cup: { x: 700, y: 540, w: 150, h: 60 },
+    hintSlots: [11],
+  },
+  {
+    name: 'Fragile Bridge',
+    hint: 'The cracked plank will shatter after the ball crosses it. Make sure the ramp leads straight to the cup.',
+    grid: GRID,
+    pegs: [10, 30],
+    planks: [{ x: 255, y: 130, w: 290, h: 16, angle: 16.6, breakable: true }],
+    ball: { x: 120, y: 20 },
+    cup: { x: 560, y: 540, w: 140, h: 60 },
+    hintSlots: [20],
+  },
+  {
+    name: 'Par Perfect',
+    hint: 'Finish in 3 moves or fewer for a perfect score. Move the high peg into the glowing slot, drop, and roll.',
+    grid: GRID,
+    // solve: move peg (0,4) -> (2,4)
+    pegs: [10, 4],
+    hintSlots: [22],
+    planks: [{ x: 339, y: 104, w: 320, h: 16, angle: -16.5 }],
+    ball: { x: 260, y: 20 },
+    cup: { x: 700, y: 540, w: 150, h: 60 },
+    par: 3,
+  },
+  {
+    name: 'Drop Budget',
+    hint: 'You only get ONE plank drop. Position the spare peg perfectly before you click the button.',
+    grid: GRID,
+    pegs: [10, 45],
+    hintSlots: [21],
+    planks: [{ x: 300, y: 130, w: 240, h: 16, angle: -12 }],
+    ball: { x: 230, y: 20 },
+    cup: { x: 700, y: 540, w: 150, h: 60 },
+    maxDrops: 1,
+  },
 ]
 
 // ---------------------------------------------------------------------------
@@ -237,6 +293,15 @@ function validateGrid(value: unknown, path: string, index: number): LevelDef['gr
   }
 }
 
+function validateOneWayPeg(value: unknown, path: string, index: number): { slot: number; direction: OneWayPeg['direction'] } {
+  const obj = assertObject(value, path, index)
+  const dir = assertString(obj.direction, `${path}.direction`, index)
+  if (!['up', 'down', 'left', 'right'].includes(dir)) {
+    throw new LevelValidationError(`${path}.direction must be up/down/left/right`, index)
+  }
+  return { slot: assertNumber(obj.slot, `${path}.slot`, index), direction: dir as OneWayPeg['direction'] }
+}
+
 function validatePlank(value: unknown, path: string, index: number): LevelDef['planks'][number] {
   const obj = assertObject(value, path, index)
   return {
@@ -245,6 +310,7 @@ function validatePlank(value: unknown, path: string, index: number): LevelDef['p
     w: assertNumber(obj.w, `${path}.w`, index),
     h: assertNumber(obj.h, `${path}.h`, index),
     angle: assertOptionalNumber(obj.angle, `${path}.angle`, index),
+    breakable: obj.breakable === undefined ? undefined : Boolean(obj.breakable),
   }
 }
 
@@ -267,6 +333,16 @@ export function validateLevel(value: unknown, index: number): LevelDef {
     pegs: assertArray(obj.pegs, `levels[${index}].pegs`, index, (v, p, i) =>
       assertNumber(v, p, i),
     ),
+    fixedPegs:
+      obj.fixedPegs === undefined
+        ? undefined
+        : assertArray(obj.fixedPegs, `levels[${index}].fixedPegs`, index, (v, p, i) =>
+            assertNumber(v, p, i),
+          ),
+    oneWayPegs:
+      obj.oneWayPegs === undefined
+        ? undefined
+        : assertArray(obj.oneWayPegs, `levels[${index}].oneWayPegs`, index, validateOneWayPeg),
     planks: assertArray(obj.planks, `levels[${index}].planks`, index, validatePlank),
     ball: validateVec(obj.ball, `levels[${index}].ball`, index),
     cup: validateCup(obj.cup, `levels[${index}].cup`, index),
@@ -276,6 +352,8 @@ export function validateLevel(value: unknown, index: number): LevelDef {
         : assertArray(obj.hintSlots, `levels[${index}].hintSlots`, index, (v, p, i) =>
             assertNumber(v, p, i),
           ),
+    par: assertOptionalNumber(obj.par, `levels[${index}].par`, index),
+    maxDrops: assertOptionalNumber(obj.maxDrops, `levels[${index}].maxDrops`, index),
   }
 }
 

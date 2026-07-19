@@ -15,6 +15,7 @@ export interface LevelPack {
 export interface PackProgress {
   unlocked: number
   completed: boolean[]
+  stars: number[] // 0-3 per level
   losses: number
 }
 
@@ -81,6 +82,7 @@ function emptyProgress(levelCount: number): PackProgress {
   return {
     unlocked: 0,
     completed: Array.from({ length: levelCount }, () => false),
+    stars: Array.from({ length: levelCount }, () => 0),
     losses: 0,
   }
 }
@@ -106,10 +108,16 @@ export function loadProgress(packId: string, levelCount: number): PackProgress {
     const completed = Array.isArray(p.completed)
       ? p.completed.map((v) => v === true)
       : []
-    // Resize to match current level count.
     while (completed.length < levelCount) completed.push(false)
     if (completed.length > levelCount) completed.length = levelCount
-    return { unlocked: Math.min(unlocked, levelCount - 1), completed, losses }
+
+    const stars = Array.isArray(p.stars)
+      ? p.stars.map((v) => (typeof v === 'number' && v >= 0 && v <= 3 ? v : 0))
+      : []
+    while (stars.length < levelCount) stars.push(0)
+    if (stars.length > levelCount) stars.length = levelCount
+
+    return { unlocked: Math.min(unlocked, levelCount - 1), completed, stars, losses }
   } catch {
     return emptyProgress(levelCount)
   }
@@ -120,10 +128,18 @@ export function saveProgress(packId: string, progress: PackProgress): void {
   localStorage.setItem(progressKey(packId), JSON.stringify(progress))
 }
 
-export function recordWin(packId: string, levelIndex: number, levelCount: number): PackProgress {
+export function recordWin(
+  packId: string,
+  levelIndex: number,
+  levelCount: number,
+  stars?: number,
+): PackProgress {
   const progress = loadProgress(packId, levelCount)
   if (levelIndex >= 0 && levelIndex < levelCount) {
     progress.completed[levelIndex] = true
+    if (stars !== undefined) {
+      progress.stars[levelIndex] = Math.max(progress.stars[levelIndex] ?? 0, stars)
+    }
   }
   progress.unlocked = Math.max(progress.unlocked, Math.min(levelIndex + 1, levelCount - 1))
   saveProgress(packId, progress)

@@ -4,6 +4,14 @@ import { usePacks } from './hooks/usePacks'
 import { PackManager } from './components/PackManager'
 import './App.css'
 
+function computeStars(moves: number, drops: number, par?: number): number {
+  if (par === undefined) return 0
+  const total = moves + drops
+  if (total <= par) return 3
+  if (total <= par + 2) return 2
+  return 1
+}
+
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const gameRef = useRef<Game | null>(null)
@@ -29,17 +37,24 @@ export default function App() {
   const [levelIdx, setLevelIdx] = useState(0)
   const [statsState, setStatsState] = useState<Stats>({
     moves: 0,
+    drops: 0,
     emptySlots: 0,
     ballLive: false,
     planksLive: false,
   })
+  const [winStars, setWinStars] = useState(0)
   const [won, setWon] = useState(false)
   const [lostFlash, setLostFlash] = useState(false)
   const [chipVisible, setChipVisible] = useState(true)
   const [managerOpen, setManagerOpen] = useState(false)
+  const statsRef = useRef(statsState)
 
   const levels = useMemo(() => currentPack?.levels ?? [], [currentPack])
   const level = levels[levelIdx]
+
+  useEffect(() => {
+    statsRef.current = statsState
+  }, [statsState])
 
   // Create / reset the game whenever the active pack changes.
   useEffect(() => {
@@ -53,8 +68,12 @@ export default function App() {
     const game = new Game(canvas, {
       onStats: (s) => setStatsState(s),
       onWin: () => {
+        const s = statsRef.current
+        const par = levels[levelIdxRef.current]?.par
+        const stars = computeStars(s.moves, s.drops, par)
+        setWinStars(stars)
         setWon(true)
-        winLevel(levelIdxRef.current)
+        winLevel(levelIdxRef.current, stars)
       },
       onBallLost: () => {
         loseBall()
@@ -103,6 +122,7 @@ export default function App() {
             {levels.map((l, i) => {
               const locked = i > progress.unlocked
               const active = i === levelIdx
+              const star = progress.stars[i] ?? 0
               return (
                 <button
                   key={l.name}
@@ -110,7 +130,7 @@ export default function App() {
                   onClick={() => goLevel(i)}
                   title={locked ? 'Finish the previous level to unlock' : l.name}
                   className={[
-                    'w-9 h-9 rounded-lg font-semibold text-sm transition-colors border',
+                    'w-9 h-9 rounded-lg font-semibold text-sm transition-colors border relative',
                     active
                       ? 'bg-amber-400 text-amber-950 border-amber-300'
                       : locked
@@ -119,6 +139,9 @@ export default function App() {
                   ].join(' ')}
                 >
                   {locked ? '🔒' : i + 1}
+                  {!locked && star > 0 && (
+                    <span className="absolute -top-1 -right-1 text-[9px] leading-none">{'⭐'.repeat(star)}</span>
+                  )}
                 </button>
               )
             })}
@@ -143,7 +166,13 @@ export default function App() {
               {levelIdx + 1}. {level.name}
             </span>
             <span className="text-amber-100/50 ml-1">Moves: {statsState.moves}</span>
-            <span className="text-amber-100/50 ml-1">Empty slots: {statsState.emptySlots}</span>
+            <span className="text-amber-100/50 ml-1">Drops: {statsState.drops}</span>
+            {level?.maxDrops !== undefined && (
+              <span className="text-amber-100/50 ml-1">/ {level.maxDrops}</span>
+            )}
+            {level?.par !== undefined && (
+              <span className="text-amber-100/50 ml-1">Par: {level.par}</span>
+            )}
             <span className="text-amber-100/40 text-xs ml-1 border border-amber-500/20 px-1.5 py-0.5 rounded truncate max-w-[120px]">
               {currentPack?.name}
             </span>
@@ -179,8 +208,11 @@ export default function App() {
               <div className="text-4xl mb-2">🎉</div>
               <h2 className="text-2xl font-bold text-amber-300">Level complete!</h2>
               <p className="text-amber-100/60 mt-1 text-sm">
-                Solved in {statsState.moves} peg move{statsState.moves === 1 ? '' : 's'}.
+                {winStars > 0 ? '⭐'.repeat(winStars) : '⭐'} · {statsState.moves} moves · {statsState.drops} drops
               </p>
+              {level?.par !== undefined && (
+                <p className="text-amber-100/40 mt-0.5 text-xs">Par: {level.par}</p>
+              )}
               <div className="mt-5 flex gap-3 justify-center">
                 <button
                   onClick={() => goLevel(levelIdx)}
@@ -210,10 +242,13 @@ export default function App() {
       <div className="w-full max-w-[960px] mt-4 flex flex-wrap items-center gap-3">
         <button
           onClick={() => gameRef.current?.dropPlanks()}
-          disabled={loading || !level}
+          disabled={loading || !level || (level.maxDrops !== undefined && statsState.drops >= level.maxDrops)}
           className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:bg-stone-700 disabled:text-stone-500 text-white font-semibold text-sm shadow-lg shadow-amber-950/50 transition-colors"
         >
           🪵 Drop planks
+          {level?.maxDrops !== undefined && (
+            <span className="ml-1.5 text-xs opacity-80">({Math.max(0, level.maxDrops - statsState.drops)})</span>
+          )}
         </button>
         <button
           onClick={() => gameRef.current?.dropBall()}
