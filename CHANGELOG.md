@@ -2,6 +2,32 @@
 
 All notable changes to peg-and-plank.
 
+## v2.1 — Fixed-peg tutorial & Level 11 stabilization
+
+### One-time tutorial bubble system
+
+**Commit:** [`55eeafe`](https://github.com/SamSoupSauce/peg-and-plank/commit/55eeafe)
+
+**What**  
+Added a one-time tutorial bubble system to introduce new mechanics without repeated hand-holding. `TutorialBubble` now carries an `id`, `message`, `buttonText`, and an optional slot highlight. Level 11 ("Fixed Point") uses three bubbles to explain fixed pegs, anchor strategy, and two-support plank stability.
+
+**Why**  
+Level 11 was unplayable without explanation: the fixed peg looked identical to movable pegs, the hint ring was too subtle, and the plank layout let the board destabilize. Players assumed the game was broken and quit. A dismissible, sequential bubble system gives clear context the first time a mechanic appears and then stays out of the way forever.
+
+**How**  
+- Added `TutorialBubble` to `src/game/types.ts` with a required `id` so progress can track what the player has already seen.
+- Extended `PackProgress` in `src/game/packs.ts` with `seenTutorials`, migrated old saves that lacked the field, and added `hasSeenTutorial` / `markTutorialSeen` helpers.
+- Created `src/components/TutorialOverlay.tsx` to render sequential bubbles, colored pulsing slot highlights, and a skip button. The whole sequence is marked as seen only when the player finishes or skips.
+- Improved fixed-peg rendering in `src/game/engine.ts`: bronze metallic gradient, bright yellow pulsing ring, and a lock icon.
+- Improved hint-slot rendering: switched from green to neon cyan with a pulsing scale animation.
+- Added a brief screen shake and invalid flash when the player tries to drag a fixed peg.
+- Fixed a placement bug: `tryPlace` and the snap-target highlight now reject slots occupied by fixed or one-way pegs, and `emptySlotCount` counts them as occupied.
+- Reworked Level 11 in `src/game/levels.ts`:
+  - The plank now spans from the fixed peg to the glowing hint slot with a longer, stable 140 px board.
+  - Added three tutorial bubbles: fixed-peg intro, anchor strategy, and the two-support tip.
+- Wired the overlay into `src/App.tsx` via `useMemo`, calling `markTutorialSeen` for the completed sequence.
+- Added the ticket file `tickets/level-11-fixed-point-analysis.md` to the repo.
+
 ## v2 — Level packs & sharing
 
 ### Entity mechanics expansion
