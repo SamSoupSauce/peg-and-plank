@@ -28,6 +28,27 @@ Level 11 was unplayable without explanation: the fixed peg looked identical to m
 - Wired the overlay into `src/App.tsx` via `useMemo`, calling `markTutorialSeen` for the completed sequence.
 - Added the ticket file `tickets/level-11-fixed-point-analysis.md` to the repo.
 
+## v2.1.2 — Fixed-peg hinge-only collision & plank alignment
+
+### Hinge-only collision for fixed pegs
+
+**Commit:** [`fc405ef`](https://github.com/SamSoupSauce/peg-and-plank/commit/fc405ef)
+
+**What**  
+Fixed the remaining Level 11 physics issues: the fixed peg no longer collides with the plank it is hinged to, and the plank now sits flush against the fixed peg while resting slightly above the target movable peg.
+
+**Why**  
+The previous global collision filter disabled collisions between *all* planks and *all* fixed pegs, which was broader than necessary and still left the plank visually intersecting its anchor. The ticket also called out that the plank needed to be flush with the fixed peg and a little higher above the normal peg so gravity could settle it cleanly.
+
+**How**  
+- In `src/game/engine.ts`:
+  - Replaced the global category/mask collision filter with a per-hinge negative `collisionFilter.group`. Each fixed peg and its connected plank share a unique negative group, so they ignore each other while still colliding with the ball, walls, and other pegs.
+  - Moved the hinge anchor from the top of the fixed peg to its right side (`pointA: { x: PEG_R, y: 0 }`), making the plank flush with the peg instead of overlapping it.
+  - Kept the zero-length, stiff constraint behavior in `attachFixedPegHinges()`.
+- In `src/game/levels.ts`:
+  - Recalculated the Level 11 plank spawn so the right end is a few pixels above the target peg top, letting gravity settle it on top.
+- Added the ticket file `tickets/ticket-13.md`.
+
 ## v2.1.1 — Fixed-peg hinge & Level 11 collision fix
 
 ### Physics stability for fixed pegs
