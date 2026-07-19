@@ -59,7 +59,8 @@ export class Game {
   private slots: Vec[] = []
   private pegs = new Map<number, Matter.Body>()
   private fixedPegs = new Map<number, Matter.Body>()
-  private oneWayPegs = new Map<number, { body: Matter.Body; direction: OneWayPeg['direction'] }>()
+  private oneWayPegs = new Map<number, { body: Matter.Body; destinationSlot: number; ghosted: boolean }>()
+  private oneWayPegsToGhost = new Set<number>()
   private planks: (Matter.Body | null)[] = []
   private plankBreakable: boolean[] = []
   private constraints: Matter.Constraint[] = []
@@ -94,6 +95,7 @@ export class Game {
           break
         }
         this.handleBallPlankContact(pair.bodyA, pair.bodyB, true)
+        this.handleBallOneWayPegContact(pair.bodyA, pair.bodyB)
       }
     })
 
@@ -102,6 +104,10 @@ export class Game {
       for (const pair of e.pairs) {
         this.handleBallPlankContact(pair.bodyA, pair.bodyB, false)
       }
+    })
+
+    Matter.Events.on(this.engine, 'afterUpdate', () => {
+      this.processGhostedPegs()
     })
 
     canvas.addEventListener('pointerdown', this.onPointerDown)
@@ -138,6 +144,7 @@ export class Game {
     this.pegs.clear()
     this.fixedPegs.clear()
     this.oneWayPegs.clear()
+    this.oneWayPegsToGhost.clear()
     this.planks = []
     this.plankBreakable = []
     this.constraints = []
@@ -197,10 +204,10 @@ export class Game {
       this.fixedPegs.set(idx, this.makeFixedPeg(p.x, p.y))
     }
 
-    // one-way directional pegs
-    for (const { slot, direction } of level.oneWayPegs ?? []) {
+    // one-way ghost pegs — static circles that turn into sensors on ball contact
+    for (const { slot, destinationSlot } of level.oneWayPegs ?? []) {
       const p = this.slots[slot]
-      this.oneWayPegs.set(slot, { body: this.makeOneWayPegWall(p.x, p.y, direction), direction })
+      this.oneWayPegs.set(slot, { body: this.makeOneWayPeg(p.x, p.y), destinationSlot, ghosted: false })
     }
 
     Matter.World.add(world, [
@@ -231,39 +238,16 @@ export class Game {
   }
 
   /**
-   * One-way pegs are visual circles plus a small static wall on the side
-   * where traffic in the forbidden direction would arrive. The wall blocks
-   * the ball from moving opposite to the arrow; the open side lets the ball
-   * pass through the peg's visual area.
+   * One-way ghost pegs are visual circles that act as a solid static body
+   * until the ball touches them. On contact they become a sensor (transparent
+   * and non-colliding) and relocate to their destination slot.
    */
-  private makeOneWayPegWall(x: number, y: number, direction: OneWayPeg['direction']): Matter.Body {
-    let wx = x
-    let wy = y
-    let w = 6
-    let h = PEG_R * 2
-    switch (direction) {
-      case 'right':
-        wx = x + PEG_R
-        break
-      case 'left':
-        wx = x - PEG_R
-        break
-      case 'up':
-        wy = y - PEG_R
-        w = PEG_R * 2
-        h = 6
-        break
-      case 'down':
-        wy = y + PEG_R
-        w = PEG_R * 2
-        h = 6
-        break
-    }
-    return Matter.Bodies.rectangle(wx, wy, w, h, {
+  private makeOneWayPeg(x: number, y: number): Matter.Body {
+    return Matter.Bodies.circle(x, y, PEG_R, {
       isStatic: true,
       label: 'peg-oneway',
-      friction: 0.1,
-      restitution: 0.1,
+      friction: 0.8,
+      restitution: 0.05,
     })
   }
 
@@ -300,12 +284,9 @@ export class Game {
   /**
    * Fixed pegs are anchors. Create a rigid, zero-length hinge between each
    * fixed peg and the nearest end of the nearest plank so the plank pivots
-   * around the peg instead of sliding off. The peg-side anchor is the peg
-   * CENTER (0,0): the hinge pin is the bolt through the peg, so the joint is
-   * always aligned with the peg regardless of which side the plank approaches
-   * from. The fixed peg and its hinged plank are put in the same negative
-   * collision group so they do not collide with each other, while still
-   * colliding with the ball, walls, and other pegs.
+   * around the peg instead of sliding off. The fixed peg and its hinged plank
+   * are put in the same negative collision group so they do not collide with
+   * each other, while still colliding with the ball, walls, and other pegs.
    */
   private attachFixedPegHinges() {
     if (this.fixedPegs.size === 0) return
@@ -338,17 +319,9 @@ export class Game {
         bestPlank.collisionFilter.group = group
         const hinge = Matter.Constraint.create({
           bodyA: fixedBody,
-          // pivot on the peg center so the joint is aligned with the peg itself
-          // (a rim offset pins the joint to empty space beside the peg and is
-          // wrong whenever the plank approaches from a different side)
-          pointA: { x: 0, y: 0 },
+          pointA: { x: PEG_R, y: 0 },
           bodyB: bestPlank,
-          // Matter treats pointB as a WORLD-AXIS offset from the plank center
-          // at creation and only tracks rotation deltas afterwards
-          // (Constraint.solve rotates pointB by the angle delta). Passing the
-          // unrotated local end anchors the hinge `plank.angle` degrees away
-          // from the plank's real end — the visible joint misalignment.
-          pointB: Matter.Vector.rotate(bestLocal, bestPlank.angle),
+          pointB: bestLocal,
           stiffness: 1,
           length: 0,
         })
@@ -591,6 +564,42 @@ export class Game {
     }
   }
 
+  private handleBallOneWayPegContact(a: Matter.Body, b: Matter.Body) {
+    if (!this.ball) return
+    const ball = this.ball
+    let body: Matter.Body | null = null
+    if (a === ball && b.label === 'peg-oneway') body = b
+    else if (b === ball && a.label === 'peg-oneway') body = a
+    if (!body) return
+
+    const slot = this.getOneWaySlotForBody(body)
+    if (slot < 0) return
+    const data = this.oneWayPegs.get(slot)
+    if (!data || data.ghosted) return
+
+    data.ghosted = true
+    this.oneWayPegsToGhost.add(slot)
+  }
+
+  private processGhostedPegs() {
+    if (this.oneWayPegsToGhost.size === 0) return
+    for (const slot of this.oneWayPegsToGhost) {
+      const data = this.oneWayPegs.get(slot)
+      if (!data) continue
+      const dest = this.slots[data.destinationSlot]
+      Matter.Body.setPosition(data.body, dest)
+      data.body.isSensor = true
+    }
+    this.oneWayPegsToGhost.clear()
+  }
+
+  private getOneWaySlotForBody(body: Matter.Body): number {
+    for (const [slot, data] of this.oneWayPegs) {
+      if (data.body === body) return slot
+    }
+    return -1
+  }
+
   private breakPlank(index: number) {
     const plank = this.planks[index]
     if (!plank) return
@@ -823,9 +832,11 @@ export class Game {
     for (const body of this.fixedPegs.values()) this.renderFixedPeg(ctx, body.position.x, body.position.y)
 
     // ---- one-way peg visuals
-    for (const [slot, { direction }] of this.oneWayPegs) {
-      const s = this.slots[slot]
-      this.renderOneWayPeg(ctx, s.x, s.y, direction)
+    for (const [slot, data] of this.oneWayPegs) {
+      const drawSlot = data.ghosted ? data.destinationSlot : slot
+      const s = this.slots[drawSlot]
+      const dir = this.getOneWayArrowDirection(slot, data.destinationSlot)
+      this.renderOneWayPeg(ctx, s.x, s.y, dir, data.ghosted)
     }
 
     // ---- held peg ghost (floats at pointer, or at home slot in click-carry mode)
@@ -1095,9 +1106,24 @@ export class Game {
     ctx.restore()
   }
 
-  private renderOneWayPeg(ctx: CanvasRenderingContext2D, x: number, y: number, direction: OneWayPeg['direction']) {
+  private getOneWayArrowDirection(slot: number, destinationSlot: number): 'up' | 'down' | 'left' | 'right' {
+    const start = this.slots[slot]
+    const end = this.slots[destinationSlot]
+    const dx = end.x - start.x
+    const dy = end.y - start.y
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      return dx > 0 ? 'right' : 'left'
+    } else {
+      return dy > 0 ? 'down' : 'up'
+    }
+  }
+
+  private renderOneWayPeg(ctx: CanvasRenderingContext2D, x: number, y: number, direction: 'up' | 'down' | 'left' | 'right', ghosted: boolean) {
     // base circle
     ctx.save()
+    if (ghosted) {
+      ctx.globalAlpha = 0.3
+    }
     ctx.shadowColor = 'rgba(0,0,0,0.5)'
     ctx.shadowBlur = 6
     ctx.shadowOffsetY = 3
@@ -1110,6 +1136,11 @@ export class Game {
     ctx.fillStyle = grad
     ctx.fill()
     ctx.restore()
+
+    ctx.save()
+    if (ghosted) {
+      ctx.globalAlpha = 0.3
+    }
     ctx.beginPath()
     ctx.arc(x, y, PEG_R, 0, Math.PI * 2)
     ctx.strokeStyle = '#1e3a8a'
@@ -1128,6 +1159,7 @@ export class Game {
     ctx.lineTo(-3, 4)
     ctx.closePath()
     ctx.fill()
+    ctx.restore()
     ctx.restore()
   }
 
