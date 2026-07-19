@@ -932,7 +932,7 @@ export class Game {
       ctx.lineTo(cx + hw * 0.4, cy - hh * 0.1)
       ctx.stroke()
       ctx.beginPath()
-      ctx.moveTo(cx - hw * 0.0.1, cy + hh * 0.3)
+      ctx.moveTo(cx - hw * 0.1, cy + hh * 0.3)
       ctx.lineTo(cx + hw * 0.3, cy + hh * 0.5)
       ctx.stroke()
     }
