@@ -4,6 +4,35 @@ All notable changes to peg-and-plank.
 
 ## v2 — Level packs & sharing
 
+### Entity mechanics expansion
+
+**Commit:** [`fedc89f`](https://github.com/SamSoupSauce/peg-and-plank/commit/fedc89f)
+
+**What**  
+Added five new entity/mechanic types from `peg-and-plank-entity-design.md`: fixed pegs, one-way pegs, breakable planks, par rating, and limited plank drops. Each mechanic received a dedicated built-in level.
+
+**Why**  
+The base game only had movable pegs and static planks. Introducing constraints (fixed pegs), directional gates (one-way pegs), single-use surfaces (breakable planks), and optimization pressure (par / limited drops) significantly expands the puzzle design space without requiring a full physics rewrite.
+
+**How**  
+- Extended `LevelDef` in `src/game/types.ts` with `fixedPegs`, `oneWayPegs`, `breakable` plank flag, `par`, and `maxDrops`.
+- In `src/game/engine.ts`:
+  - Fixed pegs are created with label `peg-fixed` and skipped by drag handlers; rendered in rusty red with a rivet ring.
+  - One-way pegs render as a blue arrow and create a small static wall on the side where reverse traffic would arrive, blocking movement against the arrow while allowing passage with it.
+  - Breakable planks track ball contact and shatter on separation, spawning debris particles.
+  - `dropPlanks()` now increments a `drops` counter and respects `maxDrops`.
+- Added `computeStars()` in `src/App.tsx` based on `moves + drops` vs `par` (3 stars ≤ par, 2 ≤ par+2, else 1).
+- Extended `PackProgress` in `src/game/packs.ts` with a per-level `stars` array and migrated existing saves.
+- Updated UI to show drops remaining, par, and stars on level buttons and in the win overlay.
+- Added showcase levels in `src/game/levels.ts`:
+  - **Fixed Point** — a bolted-down peg anchors the ramp.
+  - **One-Way Gate** — a directional peg forces left-to-right flow.
+  - **Fragile Bridge** — a cracked plank collapses after the ball crosses.
+  - **Par Perfect** — a speed-run layout with `par: 3`.
+  - **Drop Budget** — only one plank drop allowed.
+
+---
+
 ### JSONified level format
 
 **Commit:** [`75ce03f`](https://github.com/SamSoupSauce/peg-and-plank/commit/75ce03f)
