@@ -227,10 +227,6 @@ export class Game {
       label: 'peg-fixed',
       friction: 0.8,
       restitution: 0.05,
-      collisionFilter: {
-        category: 0x0002,
-        mask: 0xffffffff,
-      },
     })
   }
 
@@ -292,10 +288,6 @@ export class Game {
         density: 0.002,
         chamfer: { radius: 5 },
         angle: ((d.angle ?? 0) * Math.PI) / 180,
-        collisionFilter: {
-          category: 0x0001,
-          mask: 0xffffffff ^ 0x0002,
-        },
       }),
     )
     this.plankBreakable = this.level.planks.map((d) => d.breakable ?? false)
@@ -308,11 +300,14 @@ export class Game {
   /**
    * Fixed pegs are anchors. Create a rigid, zero-length hinge between each
    * fixed peg and the nearest end of the nearest plank so the plank pivots
-   * around the peg instead of sliding off.
+   * around the peg instead of sliding off. The fixed peg and its hinged plank
+   * are put in the same negative collision group so they do not collide with
+   * each other, while still colliding with the ball, walls, and other pegs.
    */
   private attachFixedPegHinges() {
     if (this.fixedPegs.size === 0) return
     const world = this.engine.world
+    let groupId = 1
     for (const fixedBody of this.fixedPegs.values()) {
       let bestPlank: Matter.Body | null = null
       let bestLocal: { x: number; y: number } | null = null
@@ -335,9 +330,12 @@ export class Game {
         }
       }
       if (bestPlank && bestLocal && bestD < 60) {
+        const group = -(groupId++)
+        fixedBody.collisionFilter.group = group
+        bestPlank.collisionFilter.group = group
         const hinge = Matter.Constraint.create({
           bodyA: fixedBody,
-          pointA: { x: 0, y: -PEG_R },
+          pointA: { x: PEG_R, y: 0 },
           bodyB: bestPlank,
           pointB: bestLocal,
           stiffness: 1,
