@@ -1,6 +1,6 @@
 # Ticket 14 — One-Way Gate (Ghost Peg Mechanic)
 
-**Status:** Fixed  
+**Status:** Fixed (v2 reimplementation)  
 **Priority:** High  
 **Component:** Physics Engine / One-Way Peg Mechanics  
 **Level Affected:** 12 — One-Way Gate  
@@ -17,15 +17,20 @@ The original level 12 used a unidirectional collision mechanic for "one-way pegs
 
 ---
 
-## Redesign: Ghost Peg Mechanic
+## Redesign: Ghost Peg Mechanic (v2)
 
 The one-way peg is now a **ghost peg** that:
 
-1. Starts as a solid blue peg blocking the ball's path.
-2. When the ball touches it, the peg becomes **mostly transparent** (30% opacity).
-3. The peg **stops colliding entirely** (becomes a sensor).
-4. The peg **relocates** to its highlighted destination slot.
-5. The ball continues through the cleared path.
+1. Starts as a **sensor** (non-colliding) blue peg at its original slot. The ball passes through it naturally.
+2. When the ball touches it, the peg becomes **mostly transparent** (15% opacity).
+3. The peg **immediately relocates** to its highlighted destination slot.
+4. The ball continues through the cleared path without any bounce.
+
+### Why Sensor-From-Start?
+
+Previous attempts made the peg a solid collider that became a sensor on touch. The problem: Matter.js resolves the collision in the same frame it detects it, so the ball would bounce **before** the `isSensor = true` change took effect. The `afterUpdate` hook ran too late — the bounce already happened.
+
+Making the peg a sensor from the start eliminates the bounce entirely while still triggering the `collisionStart` event. The visual effect is identical: the ball touches the peg, the peg ghosts and relocates.
 
 ### Data Structure Changes
 
@@ -43,15 +48,15 @@ interface OneWayPeg {
 }
 ```
 
-### Physics Engine Changes
+### Physics Engine Changes (v2)
 
-- `makeOneWayPeg()` now creates a **circle body** (like a regular peg) instead of a rectangular wall.
-- `handleBallOneWayPegContact()` detects ball→one-way peg collisions and marks the peg as `ghosted`.
-- `processGhostedPegs()` runs in `afterUpdate` to:
-  - Teleport the peg body to its `destinationSlot` position.
-  - Set `body.isSensor = true` to disable all collisions.
-- Rendering: ghosted pegs are drawn at the destination slot with 30% opacity.
-- The arrow now points **from the original slot toward the destination slot**, serving as a visual hint.
+- `makeOneWayPeg()` now creates a **circle sensor body** (`isSensor: true`) from the start.
+- `handleBallOneWayPegContact()` detects ball→one-way peg collisions and:
+  - Sets `ghosted = true`
+  - **Immediately** teleports the body to `destinationSlot` via `Matter.Body.setPosition()`
+- No `processGhostedPegs()` or `afterUpdate` hook needed — everything happens in the same frame as the collision.
+- `renderOneWayPeg()` draws ghosted pegs at **15% opacity** (down from 30% in v1).
+- The arrow still points **from the original slot toward the destination slot**, serving as a visual hint.
 
 ---
 
@@ -79,12 +84,12 @@ interface OneWayPeg {
 ## Acceptance Criteria
 
 - [x] One-way pegs use `destinationSlot` instead of `direction`.
-- [x] Ball touches one-way peg → peg becomes transparent and non-colliding.
-- [x] Peg relocates to its `destinationSlot` when touched.
+- [x] One-way pegs are sensors from the start (no ball bounce).
+- [x] Ball touches one-way peg → peg becomes transparent and relocates immediately.
 - [x] Level 12 ball can reach the plank.
 - [x] Level 12 plank angle guides ball toward the cup.
 - [x] Level 12 cup catches the ball after the ghost peg clears.
-- [x] No physics jitter or unpredictable bounces from rectangular collision walls.
+- [x] No physics jitter or unpredictable bounces.
 
 ---
 
