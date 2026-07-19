@@ -1,4 +1,4 @@
-import type { LevelDef, OneWayPeg } from './types'
+import type { LevelDef, OneWayPeg, TutorialBubble } from './types'
 
 export type { LevelDef }
 
@@ -166,14 +166,33 @@ export const LEVELS: LevelDef[] = [
   // ---------- entity mechanic showcase levels ----------
   {
     name: 'Fixed Point',
-    hint: 'The rusty red peg is bolted down. Use it as the anchor and place the spare peg under the far end of the ramp.',
+    hint: 'The bronze peg is bolted down. Use it as the anchor and place the spare peg under the glowing far end of the ramp.',
     grid: GRID,
     pegs: [45],
     fixedPegs: [10],
-    planks: [{ x: 165, y: 130, w: 120, h: 16, angle: 41.6 }],
-    ball: { x: 120, y: 20 },
+    planks: [{ x: 255, y: 220, w: 140, h: 16, angle: 41.6 }],
+    ball: { x: 210, y: 20 },
     cup: { x: 420, y: 540, w: 140, h: 60 },
     hintSlots: [20],
+    tutorials: [
+      {
+        id: 'fixed-peg-intro',
+        message: 'New mechanic: FIXED PEGS!\n\nSome pegs are bolted down — you CANNOT move them. Look for the lock icon.',
+        buttonText: 'Show Me!',
+        highlight: { type: 'slot', target: { slot: 10 }, color: { r: 250, g: 204, b: 21 } },
+      },
+      {
+        id: 'fixed-peg-anchor',
+        message: 'Fixed pegs are ANCHORS.\n\nPlace the spare peg under the glowing far end of the ramp, then drop the planks.',
+        buttonText: 'Got it!',
+        highlight: { type: 'slot', target: { slot: 20 }, color: { r: 34, g: 211, b: 238 } },
+      },
+      {
+        id: 'fixed-peg-tip',
+        message: 'TIP: A plank needs at least two supports. The fixed peg counts as one — add the spare peg as the second.',
+        buttonText: "Let's Play!",
+      },
+    ],
   },
   {
     name: 'One-Way Gate',
@@ -302,6 +321,43 @@ function validateOneWayPeg(value: unknown, path: string, index: number): { slot:
   return { slot: assertNumber(obj.slot, `${path}.slot`, index), direction: dir as OneWayPeg['direction'] }
 }
 
+function validateColor(value: unknown, path: string, index: number): { r: number; g: number; b: number } {
+  const obj = assertObject(value, path, index)
+  return {
+    r: assertNumber(obj.r, `${path}.r`, index),
+    g: assertNumber(obj.g, `${path}.g`, index),
+    b: assertNumber(obj.b, `${path}.b`, index),
+  }
+}
+
+function validateHighlight(
+  value: unknown,
+  path: string,
+  index: number,
+): NonNullable<TutorialBubble['highlight']> {
+  const obj = assertObject(value, path, index)
+  const type = assertString(obj.type, `${path}.type`, index)
+  if (type !== 'slot') {
+    throw new LevelValidationError(`${path}.type must be 'slot'`, index)
+  }
+  const targetObj = assertObject(obj.target, `${path}.target`, index)
+  return {
+    type: 'slot',
+    target: { slot: assertNumber(targetObj.slot, `${path}.target.slot`, index) },
+    color: validateColor(obj.color, `${path}.color`, index),
+  }
+}
+
+function validateTutorialBubble(value: unknown, path: string, index: number): TutorialBubble {
+  const obj = assertObject(value, path, index)
+  return {
+    id: assertString(obj.id, `${path}.id`, index),
+    message: assertString(obj.message, `${path}.message`, index),
+    buttonText: assertString(obj.buttonText, `${path}.buttonText`, index),
+    highlight: obj.highlight === undefined ? undefined : validateHighlight(obj.highlight, `${path}.highlight`, index),
+  }
+}
+
 function validatePlank(value: unknown, path: string, index: number): LevelDef['planks'][number] {
   const obj = assertObject(value, path, index)
   return {
@@ -354,6 +410,10 @@ export function validateLevel(value: unknown, index: number): LevelDef {
           ),
     par: assertOptionalNumber(obj.par, `levels[${index}].par`, index),
     maxDrops: assertOptionalNumber(obj.maxDrops, `levels[${index}].maxDrops`, index),
+    tutorials:
+      obj.tutorials === undefined
+        ? undefined
+        : assertArray(obj.tutorials, `levels[${index}].tutorials`, index, validateTutorialBubble),
   }
 }
 

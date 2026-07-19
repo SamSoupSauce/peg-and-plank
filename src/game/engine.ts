@@ -74,6 +74,7 @@ export class Game {
   private held: HeldPeg | null = null
   private hoverPeg = false
   private invalidFlash = 0
+  private shake = 0
   private particles: Particle[] = []
 
   constructor(canvas: HTMLCanvasElement, events: GameEvents) {
@@ -326,6 +327,15 @@ export class Game {
     return -1
   }
 
+  private fixedPegSlotAt(p: Vec): number {
+    for (const [idx, body] of this.fixedPegs) {
+      const dx = body.position.x - p.x
+      const dy = body.position.y - p.y
+      if (dx * dx + dy * dy < (PEG_R + 8) ** 2) return idx
+    }
+    return -1
+  }
+
   private nearestSlot(p: Vec): number {
     let best = -1
     let bestD = SNAP_DIST
@@ -343,7 +353,13 @@ export class Game {
 
   /** Rule: a peg may only move if an empty slot exists on the wall. */
   private get emptySlotCount(): number {
-    return this.slots.length - this.pegs.size - (this.held ? 1 : 0)
+    return (
+      this.slots.length -
+      this.pegs.size -
+      this.fixedPegs.size -
+      this.oneWayPegs.size -
+      (this.held ? 1 : 0)
+    )
   }
 
   private onPointerDown = (e: PointerEvent) => {
@@ -364,6 +380,13 @@ export class Game {
     }
 
     if (this.won) return
+
+    const fixedSlot = this.fixedPegSlotAt(p)
+    if (fixedSlot >= 0) {
+      this.invalidFlash = 1
+      this.shake = 1
+      return
+    }
 
     const slot = this.pegSlotAt(p)
     if (slot >= 0) {
@@ -434,7 +457,7 @@ export class Game {
   private tryPlace(target: number) {
     if (!this.held) return
     // target must be an EMPTY slot — the core rule of the game
-    if (this.pegs.has(target)) {
+    if (this.pegs.has(target) || this.fixedPegs.has(target) || this.oneWayPegs.has(target)) {
       this.invalidFlash = 1
       if (this.held.dragging) this.cancelHold()
       return
@@ -565,6 +588,7 @@ export class Game {
       }
     }
     if (this.invalidFlash > 0) this.invalidFlash = Math.max(0, this.invalidFlash - dt / 500)
+    if (this.shake > 0) this.shake = Math.max(0, this.shake - dt / 320)
 
     // confetti
     for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -598,6 +622,9 @@ export class Game {
     const ctx = this.ctx
     const scale = this.canvas.width / W
     ctx.setTransform(scale, 0, 0, scale, 0, 0)
+    if (this.shake > 0) {
+      ctx.translate((Math.random() - 0.5) * this.shake * 14, (Math.random() - 0.5) * this.shake * 14)
+    }
     ctx.clearRect(0, 0, W, H)
 
     // ---- backdrop
@@ -683,17 +710,26 @@ export class Game {
 
       // hint pulse
       if (hintSet.has(i) && !this.won) {
-        const pulse = 3 + Math.sin(this.time * 4) * 2
+        const pulseScale = 0.9 + (Math.sin(this.time * Math.PI * 2) + 1) * 0.1
+        ctx.save()
+        ctx.translate(s.x, s.y)
+        ctx.scale(pulseScale, pulseScale)
         ctx.beginPath()
-        ctx.arc(s.x, s.y, SLOT_R + 4 + pulse, 0, Math.PI * 2)
-        ctx.strokeStyle = `rgba(74,222,128,${0.55 + Math.sin(this.time * 4) * 0.25})`
-        ctx.lineWidth = 2.5
+        ctx.arc(0, 0, SLOT_R + 8, 0, Math.PI * 2)
+        ctx.strokeStyle = `rgba(34,211,238,${0.5 + Math.sin(this.time * Math.PI * 2) * 0.25})`
+        ctx.lineWidth = 3
         ctx.stroke()
+        ctx.beginPath()
+        ctx.arc(0, 0, SLOT_R + 5, 0, Math.PI * 2)
+        ctx.strokeStyle = `rgba(34,211,238,${0.25 + Math.sin(this.time * Math.PI * 2) * 0.15})`
+        ctx.lineWidth = 1.5
+        ctx.stroke()
+        ctx.restore()
       }
 
       // snap-target highlight while carrying a peg
       if (this.held && i === target) {
-        const ok = !this.pegs.has(i)
+        const ok = !this.pegs.has(i) && !this.fixedPegs.has(i) && !this.oneWayPegs.has(i)
         ctx.beginPath()
         ctx.arc(s.x, s.y, SLOT_R + 7, 0, Math.PI * 2)
         ctx.strokeStyle = ok ? '#4ade80' : '#f87171'
@@ -948,26 +984,49 @@ export class Game {
     ctx.shadowBlur = 6
     ctx.shadowOffsetY = 3
     const grad = ctx.createRadialGradient(x - 3, y - 4, 2, x, y, PEG_R)
-    grad.addColorStop(0, '#fca5a5')
-    grad.addColorStop(0.5, '#b91c1c')
-    grad.addColorStop(1, '#7f1d1d')
+    grad.addColorStop(0, '#e8c39e')
+    grad.addColorStop(0.5, '#8c6239')
+    grad.addColorStop(1, '#4a3420')
     ctx.beginPath()
     ctx.arc(x, y, PEG_R, 0, Math.PI * 2)
     ctx.fillStyle = grad
     ctx.fill()
     ctx.restore()
 
-    // rivet ring
+    // bright yellow pulse ring
+    const pulse = 2 + Math.sin(this.time * 5) * 1.5
+    ctx.beginPath()
+    ctx.arc(x, y, PEG_R + 3 + pulse, 0, Math.PI * 2)
+    ctx.strokeStyle = `rgba(250,204,21,${0.5 + Math.sin(this.time * 5) * 0.25})`
+    ctx.lineWidth = 3
+    ctx.stroke()
+
+    // dark border
     ctx.beginPath()
     ctx.arc(x, y, PEG_R, 0, Math.PI * 2)
-    ctx.strokeStyle = '#450a0a'
+    ctx.strokeStyle = '#2a1d10'
     ctx.lineWidth = 2
     ctx.stroke()
+
+    // small lock icon
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.scale(0.55, 0.55)
+    ctx.fillStyle = '#facc15'
+    ctx.strokeStyle = '#facc15'
+    ctx.lineWidth = 2.5
     ctx.beginPath()
-    ctx.arc(x, y, PEG_R - 4, 0, Math.PI * 2)
-    ctx.strokeStyle = 'rgba(69,10,10,0.5)'
-    ctx.lineWidth = 1.5
+    ctx.arc(0, -5, 5, Math.PI, 0)
     ctx.stroke()
+    ctx.beginPath()
+    ctx.roundRect(-6, -4, 12, 11, 2)
+    ctx.fill()
+    ctx.fillStyle = '#4a3420'
+    ctx.beginPath()
+    ctx.arc(0, 1, 1.8, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillRect(-0.8, 1, 1.6, 3)
+    ctx.restore()
   }
 
   private renderOneWayPeg(ctx: CanvasRenderingContext2D, x: number, y: number, direction: OneWayPeg['direction']) {

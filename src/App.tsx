@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Game, type Stats } from './game/engine'
 import { usePacks } from './hooks/usePacks'
 import { PackManager } from './components/PackManager'
+import { TutorialOverlay } from './components/TutorialOverlay'
 import './App.css'
 
 function computeStars(moves: number, drops: number, par?: number): number {
@@ -31,6 +32,7 @@ export default function App() {
     removePack,
     winLevel,
     loseBall,
+    markTutorialSeen,
     loading,
   } = usePacks()
 
@@ -98,6 +100,13 @@ export default function App() {
     setWon(false)
     gameRef.current?.loadLevel(levels[idx])
   }
+
+  const activeTutorials = useMemo(() => {
+    if (!level) return null
+    const seen = new Set(progress.seenTutorials ?? [])
+    const unseen = level.tutorials?.filter((b) => !seen.has(b.id)) ?? []
+    return unseen.length > 0 ? unseen : null
+  }, [level, progress.seenTutorials])
 
   return (
     <div className="min-h-screen bg-[#120d08] text-amber-50 flex flex-col items-center px-4 py-6">
@@ -235,6 +244,15 @@ export default function App() {
               </div>
             </div>
           </div>
+        )}
+
+        {activeTutorials && level && (
+          <TutorialOverlay
+            level={level}
+            bubbles={activeTutorials}
+            onComplete={() => {}}
+            onMarkSeen={(ids) => ids.forEach((id) => markTutorialSeen(id))}
+          />
         )}
       </div>
 

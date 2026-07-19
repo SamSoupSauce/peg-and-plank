@@ -33,6 +33,17 @@ export interface OneWayPeg {
   direction: 'up' | 'down' | 'left' | 'right'
 }
 
+export interface TutorialBubble {
+  id: string
+  message: string
+  buttonText: string
+  highlight?: {
+    type: 'slot'
+    target: { slot: number }
+    color: { r: number; g: number; b: number }
+  }
+}
+
 export interface LevelDef {
   name: string
   hint: string
@@ -46,6 +57,7 @@ export interface LevelDef {
   hintSlots?: number[] // slots that pulse as a hint
   par?: number // target moves (peg moves + plank drops) for 3 stars
   maxDrops?: number // max number of plank drops allowed
+  tutorials?: TutorialBubble[] // intro bubbles shown once for new mechanics
 }
 
 export function slotPos(grid: GridDef, index: number): Vec {

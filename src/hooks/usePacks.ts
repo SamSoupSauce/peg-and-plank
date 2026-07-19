@@ -8,6 +8,7 @@ import {
   loadPacks,
   loadProgress,
   makePackId,
+  markTutorialSeen as markTutorialSeenProgress,
   parsePackJSON,
   recordLoss,
   recordWin,
@@ -31,6 +32,7 @@ export interface UsePacksResult {
   removePack: (id: string) => boolean
   winLevel: (levelIndex: number, stars?: number) => void
   loseBall: () => void
+  markTutorialSeen: (tutorialId: string) => void
   loading: boolean
 }
 
@@ -50,7 +52,9 @@ function initPackState() {
   return {
     packs: loadedPacks,
     currentPackId: pack?.id ?? null,
-    progress: pack ? loadProgress(pack.id, pack.levels.length) : { unlocked: 0, completed: [], stars: [], losses: 0 },
+    progress: pack
+      ? loadProgress(pack.id, pack.levels.length)
+      : { unlocked: 0, completed: [], stars: [], losses: 0, seenTutorials: [] },
   }
 }
 
@@ -189,6 +193,15 @@ export function usePacks(): UsePacksResult {
     setProgress(next)
   }, [currentPack])
 
+  const markTutorialSeen = useCallback(
+    (tutorialId: string) => {
+      if (!currentPack) return
+      const next = markTutorialSeenProgress(currentPack.id, tutorialId, currentPack.levels.length)
+      setProgress(next)
+    },
+    [currentPack],
+  )
+
   return {
     packs,
     currentPackId,
@@ -203,6 +216,7 @@ export function usePacks(): UsePacksResult {
     removePack,
     winLevel,
     loseBall,
+    markTutorialSeen,
     loading,
   }
 }

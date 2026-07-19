@@ -17,6 +17,7 @@ export interface PackProgress {
   completed: boolean[]
   stars: number[] // 0-3 per level
   losses: number
+  seenTutorials: string[] // tutorial ids the player has dismissed
 }
 
 const PACKS_KEY = 'pegplank_packs'
@@ -84,6 +85,7 @@ function emptyProgress(levelCount: number): PackProgress {
     completed: Array.from({ length: levelCount }, () => false),
     stars: Array.from({ length: levelCount }, () => 0),
     losses: 0,
+    seenTutorials: [],
   }
 }
 
@@ -117,7 +119,11 @@ export function loadProgress(packId: string, levelCount: number): PackProgress {
     while (stars.length < levelCount) stars.push(0)
     if (stars.length > levelCount) stars.length = levelCount
 
-    return { unlocked: Math.min(unlocked, levelCount - 1), completed, stars, losses }
+    const seenTutorials = Array.isArray(p.seenTutorials)
+      ? p.seenTutorials.filter((v): v is string => typeof v === 'string')
+      : []
+
+    return { unlocked: Math.min(unlocked, levelCount - 1), completed, stars, losses, seenTutorials }
   } catch {
     return emptyProgress(levelCount)
   }
@@ -126,6 +132,35 @@ export function loadProgress(packId: string, levelCount: number): PackProgress {
 export function saveProgress(packId: string, progress: PackProgress): void {
   if (typeof window === 'undefined') return
   localStorage.setItem(progressKey(packId), JSON.stringify(progress))
+}
+
+function readSeenTutorials(packId: string): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(progressKey(packId))
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return []
+    const p = parsed as Record<string, unknown>
+    return Array.isArray(p.seenTutorials)
+      ? p.seenTutorials.filter((v): v is string => typeof v === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
+
+export function hasSeenTutorial(packId: string, tutorialId: string): boolean {
+  return readSeenTutorials(packId).includes(tutorialId)
+}
+
+export function markTutorialSeen(packId: string, tutorialId: string, levelCount: number): PackProgress {
+  const progress = loadProgress(packId, levelCount)
+  if (!progress.seenTutorials.includes(tutorialId)) {
+    progress.seenTutorials.push(tutorialId)
+    saveProgress(packId, progress)
+  }
+  return progress
 }
 
 export function recordWin(
