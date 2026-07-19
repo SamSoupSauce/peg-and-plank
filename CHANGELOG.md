@@ -6,7 +6,7 @@ All notable changes to peg-and-plank.
 
 ### Hinge joint on the plank is not aligned with the fixed peg
 
-**Commit:** [`6f20b70`](https://github.com/SamSoupSauce/peg-and-plank/commit/6f20b70)
+**Commit:** [`525b4c5`](https://github.com/SamSoupSauce/peg-and-plank/commit/525b4c5)
 
 **What**  
 Fixed the Level 11 ("Fixed Point") hinge so the plank's joint sits exactly on the fixed peg (0.00–0.06 px drift, previously ~29 px), and re-tuned the level geometry so the intended solution — plank hinged to the fixed peg, far end resting on the spare peg at the hint slot, ball rolling into the cup — actually works.
