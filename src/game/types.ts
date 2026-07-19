@@ -30,7 +30,7 @@ export interface CupDef {
 
 export interface OneWayPeg {
   slot: number
-  direction: 'up' | 'down' | 'left' | 'right'
+  destinationSlot: number
 }
 
 export interface TutorialBubble {
@@ -50,7 +50,7 @@ export interface LevelDef {
   grid: GridDef
   pegs: number[] // slot indices that start occupied by normal movable pegs
   fixedPegs?: number[] // slot indices for immovable pegs
-  oneWayPegs?: OneWayPeg[] // directional barrier pegs
+  oneWayPegs?: OneWayPeg[] // ghost pegs that relocate when touched
   planks: PlankDef[]
   ball: Vec // ball spawn point
   cup: CupDef
