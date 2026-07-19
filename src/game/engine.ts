@@ -60,7 +60,6 @@ export class Game {
   private pegs = new Map<number, Matter.Body>()
   private fixedPegs = new Map<number, Matter.Body>()
   private oneWayPegs = new Map<number, { body: Matter.Body; destinationSlot: number; ghosted: boolean }>()
-  private oneWayPegsToGhost = new Set<number>()
   private planks: (Matter.Body | null)[] = []
   private plankBreakable: boolean[] = []
   private constraints: Matter.Constraint[] = []
@@ -106,10 +105,6 @@ export class Game {
       }
     })
 
-    Matter.Events.on(this.engine, 'afterUpdate', () => {
-      this.processGhostedPegs()
-    })
-
     canvas.addEventListener('pointerdown', this.onPointerDown)
     canvas.addEventListener('pointermove', this.onPointerMove)
     canvas.addEventListener('pointerup', this.onPointerUp)
@@ -144,7 +139,6 @@ export class Game {
     this.pegs.clear()
     this.fixedPegs.clear()
     this.oneWayPegs.clear()
-    this.oneWayPegsToGhost.clear()
     this.planks = []
     this.plankBreakable = []
     this.constraints = []
@@ -235,6 +229,7 @@ export class Game {
   private makeOneWayPeg(x: number, y: number): Matter.Body {
     return Matter.Bodies.circle(x, y, PEG_R, {
       isStatic: true,
+      isSensor: true,
       label: 'peg-oneway',
       friction: 0.8,
       restitution: 0.05,
@@ -555,19 +550,8 @@ export class Game {
     if (!data || data.ghosted) return
 
     data.ghosted = true
-    this.oneWayPegsToGhost.add(slot)
-  }
-
-  private processGhostedPegs() {
-    if (this.oneWayPegsToGhost.size === 0) return
-    for (const slot of this.oneWayPegsToGhost) {
-      const data = this.oneWayPegs.get(slot)
-      if (!data) continue
-      const dest = this.slots[data.destinationSlot]
-      Matter.Body.setPosition(data.body, dest)
-      data.body.isSensor = true
-    }
-    this.oneWayPegsToGhost.clear()
+    const dest = this.slots[data.destinationSlot]
+    Matter.Body.setPosition(body, dest)
   }
 
   private getOneWaySlotForBody(body: Matter.Body): number {
@@ -948,7 +932,7 @@ export class Game {
       ctx.lineTo(cx + hw * 0.4, cy - hh * 0.1)
       ctx.stroke()
       ctx.beginPath()
-      ctx.moveTo(cx - hw * 0.1, cy + hh * 0.3)
+      ctx.moveTo(cx - hw * 0.0.1, cy + hh * 0.3)
       ctx.lineTo(cx + hw * 0.3, cy + hh * 0.5)
       ctx.stroke()
     }
@@ -1066,7 +1050,7 @@ export class Game {
   private renderOneWayPeg(ctx: CanvasRenderingContext2D, x: number, y: number, direction: 'up' | 'down' | 'left' | 'right', ghosted: boolean) {
     ctx.save()
     if (ghosted) {
-      ctx.globalAlpha = 0.3
+      ctx.globalAlpha = 0.15
     }
     ctx.shadowColor = 'rgba(0,0,0,0.5)'
     ctx.shadowBlur = 6
@@ -1083,7 +1067,7 @@ export class Game {
 
     ctx.save()
     if (ghosted) {
-      ctx.globalAlpha = 0.3
+      ctx.globalAlpha = 0.15
     }
     ctx.beginPath()
     ctx.arc(x, y, PEG_R, 0, Math.PI * 2)
