@@ -1,6 +1,6 @@
 # Ticket 12 — Collision Friction
 
-**Status:** Open  
+**Status:** Closed — resolved in v2.1.3 ([`525b4c5`](https://github.com/SamSoupSauce/peg-and-plank/commit/525b4c5))  
 **Priority:** High  
 **Component:** Physics Engine / Fixed Peg Mechanics  
 **Level Affected:** 11 — Fixed Point  
@@ -81,11 +81,13 @@ Matter.Composite.add(world, hinge);
 
 ## Acceptance Criteria
 
-- [ ] Plank is rigidly attached to the fixed peg via a hinge constraint.
-- [ ] Plank does not collide with intermediate pegs (only fixed + target movable).
-- [ ] Plank rests on top of the movable peg, supported from below by gravity.
-- [ ] Ball rolls down the plank smoothly after drop.
-- [ ] Level 11 is solvable without physics explosions or jitter.
+All verified in v2.1.3 with headless Matter.js simulations (`scripts/final-verify.cjs`):
+
+- [x] Plank is rigidly attached to the fixed peg via a hinge constraint. — hinge drift ≤ 0.06 px under ball impact (was ~29 px; root cause was the unrotated `pointB` world-axis offset)
+- [x] Plank does not collide with intermediate pegs (only fixed + target movable). — hinged pair shares a negative collision group; the 140 px board spans fixed peg → slot 20 with no intermediate contacts
+- [x] Plank rests on top of the movable peg, supported from below by gravity. — settles at 32.5°, far end overhanging the support peg top
+- [x] Ball rolls down the plank smoothly after drop. — ball rolls the full ramp and lands in the cup
+- [x] Level 11 is solvable without physics explosions or jitter. — solved state wins; unsolved state (no support peg) hangs stably from the hinge
 
 ---
 
