@@ -1,60 +1,75 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Game, type Stats } from './game/engine'
-import { useLevels } from './hooks/useLevels'
+import { usePacks } from './hooks/usePacks'
+import { PackManager } from './components/PackManager'
 import './App.css'
-
-const UNLOCK_KEY = 'pegplank_unlocked'
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const gameRef = useRef<Game | null>(null)
   const levelIdxRef = useRef(0)
 
-  const { levels, loading, error, source } = useLevels()
+  const {
+    packs,
+    currentPackId,
+    currentPack,
+    progress,
+    stats,
+    getStatsForPack,
+    selectPack,
+    addPackFromURL,
+    addPackFromFile,
+    addPackFromJSON,
+    removePack,
+    winLevel,
+    loseBall,
+    loading,
+  } = usePacks()
 
   const [levelIdx, setLevelIdx] = useState(0)
-  const [stats, setStats] = useState<Stats>({ moves: 0, emptySlots: 0, ballLive: false, planksLive: false })
+  const [statsState, setStatsState] = useState<Stats>({
+    moves: 0,
+    emptySlots: 0,
+    ballLive: false,
+    planksLive: false,
+  })
   const [won, setWon] = useState(false)
   const [lostFlash, setLostFlash] = useState(false)
   const [chipVisible, setChipVisible] = useState(true)
-  const [unlockedRaw, setUnlockedRaw] = useState(() => {
-    const v = Number(localStorage.getItem(UNLOCK_KEY) ?? '0')
-    return Number.isFinite(v) ? Math.max(0, v) : 0
-  })
+  const [managerOpen, setManagerOpen] = useState(false)
 
-  const unlocked = useMemo(() => {
-    if (levels.length === 0) return 0
-    return Math.min(unlockedRaw, levels.length - 1)
-  }, [unlockedRaw, levels])
+  const levels = useMemo(() => currentPack?.levels ?? [], [currentPack])
+  const level = levels[levelIdx]
 
-  // Create the game once the canvas and levels are available.
+  // Create / reset the game whenever the active pack changes.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || levels.length === 0) return
 
+    levelIdxRef.current = 0
+    setLevelIdx(0)
+    setWon(false)
+
     const game = new Game(canvas, {
-      onStats: (s) => setStats(s),
+      onStats: (s) => setStatsState(s),
       onWin: () => {
         setWon(true)
-        setUnlockedRaw((u) => {
-          const next = Math.max(u, Math.min(levelIdxRef.current + 1, levels.length - 1))
-          localStorage.setItem(UNLOCK_KEY, String(next))
-          return next
-        })
+        winLevel(levelIdxRef.current)
       },
       onBallLost: () => {
+        loseBall()
         setLostFlash(true)
         window.setTimeout(() => setLostFlash(false), 2200)
       },
     })
     gameRef.current = game
-    game.loadLevel(levels[levelIdxRef.current])
+    game.loadLevel(levels[0])
 
     return () => {
       game.destroy()
       gameRef.current = null
     }
-  }, [levels])
+  }, [currentPack, levels, winLevel, loseBall])
 
   const goLevel = (i: number) => {
     if (levels.length === 0) return
@@ -64,8 +79,6 @@ export default function App() {
     setWon(false)
     gameRef.current?.loadLevel(levels[idx])
   }
-
-  const level = levels[levelIdx]
 
   return (
     <div className="min-h-screen bg-[#120d08] text-amber-50 flex flex-col items-center px-4 py-6">
@@ -79,29 +92,37 @@ export default function App() {
             A 2D physics puzzle — pegs hold planks, planks guide the ball.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {levels.map((l, i) => {
-            const locked = i > unlocked
-            const active = i === levelIdx
-            return (
-              <button
-                key={l.name}
-                disabled={locked || loading}
-                onClick={() => goLevel(i)}
-                title={locked ? 'Finish the previous level to unlock' : l.name}
-                className={[
-                  'w-9 h-9 rounded-lg font-semibold text-sm transition-colors border',
-                  active
-                    ? 'bg-amber-400 text-amber-950 border-amber-300'
-                    : locked
-                      ? 'bg-stone-800/50 text-stone-600 border-stone-700 cursor-not-allowed'
-                      : 'bg-stone-800 text-amber-100/80 border-stone-600 hover:bg-stone-700',
-                ].join(' ')}
-              >
-                {locked ? '🔒' : i + 1}
-              </button>
-            )
-          })}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setManagerOpen(true)}
+            className="px-3 py-1.5 rounded-lg bg-stone-800 border border-stone-600 text-amber-100/80 hover:bg-stone-700 hover:text-amber-100 text-sm font-medium transition-colors"
+          >
+            🎒 Packs
+          </button>
+          <div className="flex items-center gap-2">
+            {levels.map((l, i) => {
+              const locked = i > progress.unlocked
+              const active = i === levelIdx
+              return (
+                <button
+                  key={l.name}
+                  disabled={locked}
+                  onClick={() => goLevel(i)}
+                  title={locked ? 'Finish the previous level to unlock' : l.name}
+                  className={[
+                    'w-9 h-9 rounded-lg font-semibold text-sm transition-colors border',
+                    active
+                      ? 'bg-amber-400 text-amber-950 border-amber-300'
+                      : locked
+                        ? 'bg-stone-800/50 text-stone-600 border-stone-700 cursor-not-allowed'
+                        : 'bg-stone-800 text-amber-100/80 border-stone-600 hover:bg-stone-700',
+                  ].join(' ')}
+                >
+                  {locked ? '🔒' : i + 1}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </header>
 
@@ -111,13 +132,7 @@ export default function App() {
 
         {loading && (
           <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center">
-            <div className="text-amber-200 text-lg font-semibold animate-pulse">Loading levels…</div>
-          </div>
-        )}
-
-        {error && (
-          <div className="absolute top-3 right-3 max-w-sm px-4 py-2 rounded-lg bg-red-950/90 border border-red-700/60 text-red-200 text-sm">
-            {error}
+            <div className="text-amber-200 text-lg font-semibold animate-pulse">Loading pack…</div>
           </div>
         )}
 
@@ -127,13 +142,11 @@ export default function App() {
             <span className="text-amber-300 font-semibold">
               {levelIdx + 1}. {level.name}
             </span>
-            <span className="text-amber-100/50 ml-1">Moves: {stats.moves}</span>
-            <span className="text-amber-100/50 ml-1">Empty slots: {stats.emptySlots}</span>
-            {source === 'url' && (
-              <span className="text-emerald-300/80 text-xs ml-1 border border-emerald-500/30 px-1.5 py-0.5 rounded">
-                custom
-              </span>
-            )}
+            <span className="text-amber-100/50 ml-1">Moves: {statsState.moves}</span>
+            <span className="text-amber-100/50 ml-1">Empty slots: {statsState.emptySlots}</span>
+            <span className="text-amber-100/40 text-xs ml-1 border border-amber-500/20 px-1.5 py-0.5 rounded truncate max-w-[120px]">
+              {currentPack?.name}
+            </span>
             <button
               onClick={() => setChipVisible(false)}
               title="Hide panel"
@@ -165,7 +178,9 @@ export default function App() {
             <div className="bg-stone-900/95 border border-amber-500/40 rounded-2xl px-10 py-8 text-center shadow-2xl">
               <div className="text-4xl mb-2">🎉</div>
               <h2 className="text-2xl font-bold text-amber-300">Level complete!</h2>
-              <p className="text-amber-100/60 mt-1 text-sm">Solved in {stats.moves} peg move{stats.moves === 1 ? '' : 's'}.</p>
+              <p className="text-amber-100/60 mt-1 text-sm">
+                Solved in {statsState.moves} peg move{statsState.moves === 1 ? '' : 's'}.
+              </p>
               <div className="mt-5 flex gap-3 justify-center">
                 <button
                   onClick={() => goLevel(levelIdx)}
@@ -181,7 +196,9 @@ export default function App() {
                     Next level →
                   </button>
                 ) : (
-                  <span className="px-4 py-2 text-sm text-amber-200/80">You finished every level. Master carpenter! 🪵</span>
+                  <span className="px-4 py-2 text-sm text-amber-200/80">
+                    You finished every level. Master carpenter! 🪵
+                  </span>
                 )}
               </div>
             </div>
@@ -217,6 +234,25 @@ export default function App() {
         </div>
       </div>
 
+      {/* pack progress footer */}
+      {currentPack && (
+        <div className="w-full max-w-[960px] mt-3 flex items-center gap-4 text-xs text-amber-100/55 bg-stone-900/50 border border-stone-800 rounded-xl px-4 py-2">
+          <span className="font-semibold text-amber-300">{currentPack.name}</span>
+          <span>
+            {stats.completed}/{stats.total} completed
+          </span>
+          <span>
+            {stats.losses} ball loss{stats.losses === 1 ? '' : 'es'}
+          </span>
+          <div className="flex-1 h-1.5 bg-stone-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-amber-500 rounded-full"
+              style={{ width: `${stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* rules */}
       <footer className="w-full max-w-[960px] mt-4 grid sm:grid-cols-3 gap-3 text-xs text-amber-100/55">
         <div className="bg-stone-900/50 border border-stone-800 rounded-xl px-4 py-3">
@@ -232,6 +268,23 @@ export default function App() {
           glowing cup. If it falls off the bottom, it's gone — adjust and retry.
         </div>
       </footer>
+
+      <PackManager
+        open={managerOpen}
+        onOpenChange={setManagerOpen}
+        packs={packs}
+        currentPackId={currentPackId}
+        getStats={getStatsForPack}
+        onSelectPack={(id) => {
+          selectPack(id)
+          setManagerOpen(false)
+        }}
+        onDeletePack={removePack}
+        onAddFromURL={addPackFromURL}
+        onAddFromFile={addPackFromFile}
+        onAddFromJSON={addPackFromJSON}
+        loading={loading}
+      />
     </div>
   )
 }
