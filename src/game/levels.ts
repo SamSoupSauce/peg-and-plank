@@ -170,8 +170,8 @@ export const LEVELS: LevelDef[] = [
     grid: GRID,
     pegs: [45],
     fixedPegs: [10],
-    planks: [{ x: 255, y: 220, w: 140, h: 16, angle: 41.6 }],
-    ball: { x: 210, y: 20 },
+    planks: [{ x: 255, y: 195, w: 118, h: 16, angle: 39.47 }],
+    ball: { x: 230, y: 20 },
     cup: { x: 420, y: 540, w: 140, h: 60 },
     hintSlots: [20],
     tutorials: [

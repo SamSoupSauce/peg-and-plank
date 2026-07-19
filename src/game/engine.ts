@@ -62,6 +62,7 @@ export class Game {
   private oneWayPegs = new Map<number, { body: Matter.Body; direction: OneWayPeg['direction'] }>()
   private planks: (Matter.Body | null)[] = []
   private plankBreakable: boolean[] = []
+  private constraints: Matter.Constraint[] = []
   private ball: Matter.Body | null = null
   private statics: Matter.Body[] = []
   private goalSensor: Matter.Body | null = null
@@ -139,6 +140,7 @@ export class Game {
     this.oneWayPegs.clear()
     this.planks = []
     this.plankBreakable = []
+    this.constraints = []
     this.ball = null
     this.statics = []
     this.goalSensor = null
@@ -225,6 +227,10 @@ export class Game {
       label: 'peg-fixed',
       friction: 0.8,
       restitution: 0.05,
+      collisionFilter: {
+        category: 0x0002,
+        mask: 0xffffffff,
+      },
     })
   }
 
@@ -273,6 +279,8 @@ export class Game {
     if (max !== undefined && this.drops >= max) return
 
     const world = this.engine.world
+    for (const c of this.constraints) Matter.World.remove(world, c)
+    this.constraints = []
     for (const p of this.planks) if (p) Matter.World.remove(world, p)
     this.planks = this.level.planks.map((d) =>
       Matter.Bodies.rectangle(d.x, d.y, d.w, d.h, {
@@ -284,12 +292,61 @@ export class Game {
         density: 0.002,
         chamfer: { radius: 5 },
         angle: ((d.angle ?? 0) * Math.PI) / 180,
+        collisionFilter: {
+          category: 0x0001,
+          mask: 0xffffffff ^ 0x0002,
+        },
       }),
     )
     this.plankBreakable = this.level.planks.map((d) => d.breakable ?? false)
     Matter.World.add(world, this.planks as Matter.Body[])
+    this.attachFixedPegHinges()
     this.drops++
     this.emitStats()
+  }
+
+  /**
+   * Fixed pegs are anchors. Create a rigid, zero-length hinge between each
+   * fixed peg and the nearest end of the nearest plank so the plank pivots
+   * around the peg instead of sliding off.
+   */
+  private attachFixedPegHinges() {
+    if (this.fixedPegs.size === 0) return
+    const world = this.engine.world
+    for (const fixedBody of this.fixedPegs.values()) {
+      let bestPlank: Matter.Body | null = null
+      let bestLocal: { x: number; y: number } | null = null
+      let bestD = Infinity
+      for (let i = 0; i < this.planks.length; i++) {
+        const plank = this.planks[i]
+        if (!plank) continue
+        const hw = this.level.planks[i].w / 2
+        for (const local of [
+          { x: -hw, y: 0 },
+          { x: hw, y: 0 },
+        ]) {
+          const worldPos = Matter.Vector.add(plank.position, Matter.Vector.rotate(local, plank.angle))
+          const d = Matter.Vector.magnitude(Matter.Vector.sub(worldPos, fixedBody.position))
+          if (d < bestD) {
+            bestD = d
+            bestPlank = plank
+            bestLocal = local
+          }
+        }
+      }
+      if (bestPlank && bestLocal && bestD < 60) {
+        const hinge = Matter.Constraint.create({
+          bodyA: fixedBody,
+          pointA: { x: 0, y: -PEG_R },
+          bodyB: bestPlank,
+          pointB: bestLocal,
+          stiffness: 1,
+          length: 0,
+        })
+        this.constraints.push(hinge)
+        Matter.World.add(world, hinge)
+      }
+    }
   }
 
   dropBall() {
