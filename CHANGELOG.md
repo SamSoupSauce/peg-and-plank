@@ -28,6 +28,28 @@ Level 11 was unplayable without explanation: the fixed peg looked identical to m
 - Wired the overlay into `src/App.tsx` via `useMemo`, calling `markTutorialSeen` for the completed sequence.
 - Added the ticket file `tickets/level-11-fixed-point-analysis.md` to the repo.
 
+## v2.1.1 — Fixed-peg hinge & Level 11 collision fix
+
+### Physics stability for fixed pegs
+
+**Commit:** [`86d3101`](https://github.com/SamSoupSauce/peg-and-plank/commit/86d3101)
+
+**What**  
+Fixed the Level 11 physics so the plank no longer slides off the fixed peg, jitters against intermediate pegs, or embeds beside the movable peg. Fixed pegs now anchor planks via rigid hinge constraints, and planks ignore collisions with fixed pegs while still colliding with movable pegs, the ball, walls, and the cup.
+
+**Why**  
+The previous fixed-peg implementation relied only on collision friction. The plank would slide, spin, and launch because it had no true pivot and could simultaneously contact the fixed peg and other pegs. This made the level unsolvable regardless of player skill.
+
+**How**  
+- In `src/game/engine.ts`:
+  - Added `attachFixedPegHinges()` to create zero-length, stiff `Matter.Constraint` hinges between each fixed peg and the nearest plank end.
+  - Assigned fixed pegs to collision category `0x0002` and planks to mask `0xffffffff ^ 0x0002`, eliminating plank/fixed-peg collision jitter while keeping ball/fixed-peg and plank/movable-peg collisions.
+  - Cleared and rebuilt constraints in `dropPlanks()` and on level reset.
+- In `src/game/levels.ts`:
+  - Respawned the Level 11 plank above the target movable peg so gravity settles it on top.
+  - Moved the ball spawn to `x: 230` so it lands on the ramp.
+- Added the ticket file `tickets/ticket-12.md`.
+
 ## v2 — Level packs & sharing
 
 ### Entity mechanics expansion
