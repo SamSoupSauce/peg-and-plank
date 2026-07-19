@@ -2,6 +2,27 @@
 
 All notable changes to peg-and-plank.
 
+## v2.1.3 — Level 11 hinge joint alignment fix
+
+### Hinge joint on the plank is not aligned with the fixed peg
+
+**Commit:** [`6f20b70`](https://github.com/SamSoupSauce/peg-and-plank/commit/6f20b70)
+
+**What**  
+Fixed the Level 11 ("Fixed Point") hinge so the plank's joint sits exactly on the fixed peg (0.00–0.06 px drift, previously ~29 px), and re-tuned the level geometry so the intended solution — plank hinged to the fixed peg, far end resting on the spare peg at the hint slot, ball rolling into the cup — actually works.
+
+**Why**  
+`attachFixedPegHinges()` passed the plank-end anchor as an unrotated body-local offset (`pointB: { x: ±hw, y: 0 }`), but Matter.js treats `pointB` as a **world-axis offset** from the body center at creation and only tracks rotation deltas afterwards (`Constraint.solve` rotates `pointB` by `bodyB.angle - constraint.angleB`). For Level 11's tilted plank, the hinge grabbed the plank ~35° away from its real end — a stable ~29 px gap between the plank's end and the peg, so the visible joint floated off the peg. The v2.1.2 rim anchor (`pointA: { x: PEG_R, y: 0 }`) had papered over a second problem: the 96 px board cannot span the 120 px from the fixed-peg center to the slot-20 support peg, which is what had forced the misaligned rim pivot in the first place.
+
+**How**  
+- In `src/game/engine.ts`:
+  - `pointB` is now `Matter.Vector.rotate(bestLocal, bestPlank.angle)` — the world-axis offset Matter expects (root-cause fix).
+  - `pointA` is now `{ x: 0, y: 0 }` — the pivot is the peg's bolt center instead of a point on its rim, so the joint is aligned with the peg regardless of which side the plank approaches from (the old hardcoded +x offset was side-blind).
+- In `src/game/levels.ts` (Level 11):
+  - Plank is now the 140 px board described in the v2.1 entry, spawned at `{ x: 270.6, y: 205, angle: 30 }` so the hinged end starts exactly on the pivot with no snap and the far end spans to the hint slot, settling on top of the support peg.
+  - Cup moved from `x: 420` to `x: 545`, the ball's verified landing point off the fixed ramp (the old position was tuned for the broken physics).
+- Verified with headless Matter.js simulations replicating the engine's spawn parameters: hinge drift ≤ 0.06 px under ball impact, plank settles at 32.5° resting on the support peg, ball lands in the cup in the solved state, and the unsolved state (no support peg) hangs stably from the hinge with no physics explosion.
+
 ## v2.1 — Fixed-peg tutorial & Level 11 stabilization
 
 ### One-time tutorial bubble system

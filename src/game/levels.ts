@@ -170,9 +170,17 @@ export const LEVELS: LevelDef[] = [
     grid: GRID,
     pegs: [45],
     fixedPegs: [10],
-    planks: [{ x: 261, y: 197.7, w: 96, h: 16, angle: 35.42 }],
+    // 140 px board (per v2.1 design) hinged at the fixed-peg CENTER (slot 10 =
+    // 210,170). The hinged end sits exactly on the pivot so the zero-length
+    // hinge starts satisfied with no snap, and the far end spans the 120 px to
+    // the hint slot (slot 20 = 300,250), settling on top of the support peg.
+    // A 96 px board cannot span slot 10 -> slot 20 from a center pivot, which
+    // is what forced the old misaligned rim anchor.
+    planks: [{ x: 270.6, y: 205, w: 140, h: 16, angle: 30 }],
     ball: { x: 230, y: 20 },
-    cup: { x: 420, y: 540, w: 140, h: 60 },
+    // cup moved to the ball's verified landing point off the 140 px ramp
+    // (headless sim: ball crosses rim height at x ~= 542)
+    cup: { x: 545, y: 540, w: 140, h: 60 },
     hintSlots: [20],
     tutorials: [
       {
