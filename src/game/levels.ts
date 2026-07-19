@@ -204,14 +204,14 @@ export const LEVELS: LevelDef[] = [
   },
   {
     name: 'One-Way Gate',
-    hint: 'The blue arrow peg only lets the ball pass from left to right. Build a ramp that sends the ball through it.',
+    hint: 'The blue peg is a ghost. When the ball hits it, the peg becomes transparent and relocates. Build a ramp that sends the ball through it.',
     grid: GRID,
     pegs: [45, 30],
-    oneWayPegs: [{ slot: 20, direction: 'right' }],
-    planks: [{ x: 300, y: 200, w: 220, h: 16, angle: 22 }],
-    ball: { x: 120, y: 20 },
-    cup: { x: 700, y: 540, w: 150, h: 60 },
-    hintSlots: [11],
+    oneWayPegs: [{ slot: 11, destinationSlot: 20 }],
+    planks: [{ x: 300, y: 200, w: 220, h: 16, angle: -22 }],
+    ball: { x: 260, y: 20 },
+    cup: { x: 520, y: 540, w: 200, h: 60 },
+    hintSlots: [20],
   },
   {
     name: 'Fragile Bridge',
@@ -320,13 +320,12 @@ function validateGrid(value: unknown, path: string, index: number): LevelDef['gr
   }
 }
 
-function validateOneWayPeg(value: unknown, path: string, index: number): { slot: number; direction: OneWayPeg['direction'] } {
+function validateOneWayPeg(value: unknown, path: string, index: number): { slot: number; destinationSlot: number } {
   const obj = assertObject(value, path, index)
-  const dir = assertString(obj.direction, `${path}.direction`, index)
-  if (!['up', 'down', 'left', 'right'].includes(dir)) {
-    throw new LevelValidationError(`${path}.direction must be up/down/left/right`, index)
+  return {
+    slot: assertNumber(obj.slot, `${path}.slot`, index),
+    destinationSlot: assertNumber(obj.destinationSlot, `${path}.destinationSlot`, index),
   }
-  return { slot: assertNumber(obj.slot, `${path}.slot`, index), direction: dir as OneWayPeg['direction'] }
 }
 
 function validateColor(value: unknown, path: string, index: number): { r: number; g: number; b: number } {
