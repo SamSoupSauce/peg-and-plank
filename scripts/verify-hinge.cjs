@@ -33,10 +33,10 @@ const hinge = Matter.Constraint.create({
 fixedPeg.collisionFilter.group = -1
 plank.collisionFilter.group = -1
 
-// cup walls: center (420,540), opening w=140 -> walls at x=350 and x=490, depth 60
-const cupL = Matter.Bodies.rectangle(350, 570, 16, 60, { isStatic: true })
-const cupR = Matter.Bodies.rectangle(490, 570, 16, 60, { isStatic: true })
-const cupB = Matter.Bodies.rectangle(420, 600, 156, 16, { isStatic: true })
+// cup walls: center (545,540), opening w=140 -> walls at x=467 and x=623, depth 60
+const cupL = Matter.Bodies.rectangle(467, 570, 16, 60, { isStatic: true })
+const cupR = Matter.Bodies.rectangle(623, 570, 16, 60, { isStatic: true })
+const cupB = Matter.Bodies.rectangle(545, 600, 156, 16, { isStatic: true })
 const floor = Matter.Bodies.rectangle(480, 640, 960, 40, { isStatic: true })
 const wallL = Matter.Bodies.rectangle(-10, 320, 20, 640, { isStatic: true })
 const wallR = Matter.Bodies.rectangle(970, 320, 20, 640, { isStatic: true })
@@ -66,7 +66,7 @@ for (let step = 1; step <= 600; step++) {
   }
   Matter.Engine.update(engine, 1000 / 60)
   if (ball && !won && ball.position.y > 540 && ball.position.y < 600 &&
-      ball.position.x > 358 && ball.position.x < 482) won = true
+      ball.position.x > 475 && ball.position.x < 615) won = true
   if (step % 60 === 0) {
     const fe = farEnd()
     console.log(

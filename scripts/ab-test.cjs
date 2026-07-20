@@ -1,6 +1,9 @@
 // A/B test with the pointB rotation fix applied to both configs.
 // A: shipped geometry (rim anchor, 96px plank, cup x=420)
 // B: center pivot + 140px plank, cup x=420
+// NOTE: config B's "ball in cup: FAIL" here is expected — it demonstrates the
+// overshoot that motivated moving Level 11's cup to x=545 (see levels.ts and
+// final-verify.cjs, where B passes with the corrected cup).
 const Matter = require('matter-js')
 const PEG_R = 12
 
