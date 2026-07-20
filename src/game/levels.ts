@@ -175,11 +175,24 @@ export const LEVELS: LevelDef[] = [
     hint: 'The blue peg is a ghost. When the ball hits it, the peg becomes transparent and relocates. Build a ramp that sends the ball through it.',
     grid: GRID,
     pegs: [45, 30],
-    oneWayPegs: [{ slot: 11, destinationSlot: 20 }],
-    planks: [{ x: 300, y: 200, w: 220, h: 16, angle: -22 }],
+    oneWayPegs: [{ slot: 20, destinationSlot: 11 }],
+    planks: [{ x: 300, y: 210, w: 220, h: 16, angle: 24 }],
     ball: { x: 260, y: 20 },
     cup: { x: 520, y: 540, w: 200, h: 60 },
-    hintSlots: [20],
+    hintSlots: [10, 21],
+    tutorials: [
+      {
+        id: 'ghost-peg-intro',
+        message: 'New mechanic: GHOST PEG!\n\nThis blue peg blocks the ball. When hit, it becomes a ghost and relocates to the glowing slot.',
+        buttonText: 'Show Me!',
+        highlight: { type: 'slot', target: { slot: 20 }, color: { r: 59, g: 130, b: 246 } },
+      },
+      {
+        id: 'ghost-peg-tip',
+        message: 'Build a ramp to send the ball through the blue peg. It will ghost and move to its destination!',
+        buttonText: "Let's Play!",
+      },
+    ],
   },
   {
     name: 'Fragile Bridge',
