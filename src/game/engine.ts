@@ -59,7 +59,7 @@ export class Game {
   private slots: Vec[] = []
   private pegs = new Map<number, Matter.Body>()
   private fixedPegs = new Map<number, Matter.Body>()
-  private oneWayPegs = new Map<number, { body: Matter.Body; destinationSlot: number; ghosted: boolean }>()
+  private oneWayPegs = new Map<number, { body: Matter.Body; destinationSlot: number; ghosted: boolean; originalSlot: number }>()
   private planks: (Matter.Body | null)[] = []
   private plankBreakable: boolean[] = []
   private constraints: Matter.Constraint[] = []
@@ -196,7 +196,7 @@ export class Game {
 
     for (const { slot, destinationSlot } of level.oneWayPegs ?? []) {
       const p = this.slots[slot]
-      this.oneWayPegs.set(slot, { body: this.makeOneWayPeg(p.x, p.y), destinationSlot, ghosted: false })
+      this.oneWayPegs.set(slot, { body: this.makeOneWayPeg(p.x, p.y), destinationSlot, ghosted: false, originalSlot: slot })
     }
 
     Matter.World.add(world, [
@@ -229,7 +229,6 @@ export class Game {
   private makeOneWayPeg(x: number, y: number): Matter.Body {
     return Matter.Bodies.circle(x, y, PEG_R, {
       isStatic: true,
-      isSensor: true,
       label: 'peg-oneway',
       friction: 0.8,
       restitution: 0.05,
@@ -570,6 +569,11 @@ export class Game {
     data.ghosted = true
     const dest = this.slots[data.destinationSlot]
     Matter.Body.setPosition(body, dest)
+    Matter.Body.set(body, 'isSensor', true)
+    
+    // Update the map so the destination slot is now the key
+    this.oneWayPegs.delete(slot)
+    this.oneWayPegs.set(data.destinationSlot, data)
   }
 
   private getOneWaySlotForBody(body: Matter.Body): number {
@@ -796,7 +800,7 @@ export class Game {
     for (const [slot, data] of this.oneWayPegs) {
       const drawSlot = data.ghosted ? data.destinationSlot : slot
       const s = this.slots[drawSlot]
-      const dir = this.getOneWayArrowDirection(slot, data.destinationSlot)
+      const dir = this.getOneWayArrowDirection(data.originalSlot, data.destinationSlot)
       this.renderOneWayPeg(ctx, s.x, s.y, dir, data.ghosted)
     }
 
