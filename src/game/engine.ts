@@ -266,6 +266,16 @@ export class Game {
     this.emitStats()
   }
 
+  /**
+   * Fixed pegs are anchors. Create a rigid, zero-length hinge between each
+   * fixed peg and the nearest end of the nearest plank so the plank pivots
+   * around the peg instead of sliding off. The peg-side anchor is the peg
+   * CENTER (0,0): the hinge pin is the bolt through the peg, so the joint is
+   * always aligned with the peg regardless of which side the plank approaches
+   * from. The fixed peg and its hinged plank are put in the same negative
+   * collision group so they do not collide with each other, while still
+   * colliding with the ball, walls, and other pegs.
+   */
   private attachFixedPegHinges() {
     if (this.fixedPegs.size === 0) return
     const world = this.engine.world
@@ -297,9 +307,17 @@ export class Game {
         bestPlank.collisionFilter.group = group
         const hinge = Matter.Constraint.create({
           bodyA: fixedBody,
-          pointA: { x: PEG_R, y: 0 },
+          // pivot on the peg center so the joint is aligned with the peg itself
+          // (a rim offset pins the joint to empty space beside the peg and is
+          // wrong whenever the plank approaches from a different side)
+          pointA: { x: 0, y: 0 },
           bodyB: bestPlank,
-          pointB: bestLocal,
+          // Matter treats pointB as a WORLD-AXIS offset from the plank center
+          // at creation and only tracks rotation deltas afterwards
+          // (Constraint.solve rotates pointB by the angle delta). Passing the
+          // unrotated local end anchors the hinge `plank.angle` degrees away
+          // from the plank's real end — the visible joint misalignment.
+          pointB: Matter.Vector.rotate(bestLocal, bestPlank.angle),
           stiffness: 1,
           length: 0,
         })
